@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "Tablero_Pedidos_BPM"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "d271a140-2667-d3a3-b323-f994613564c7"
+  }
+}

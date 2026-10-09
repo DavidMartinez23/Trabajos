@@ -1,0 +1,3 @@
+relationship bfa7e567-8a42-85c4-6535-3b85e643d40c
+	fromColumn: Pedidos.'Fecha de compra'
+	toColumn: Calendario.Fecha

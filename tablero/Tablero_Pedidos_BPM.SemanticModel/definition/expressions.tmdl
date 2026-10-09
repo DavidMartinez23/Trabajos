@@ -1,0 +1,4 @@
+/// Carpeta donde están los archivos CSV originales (debe terminar en \).
+expression RutaDatos = "C:\Trabajos\datos\originales\" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+
+	annotation PBI_ResultType = Text

@@ -1,0 +1,150 @@
+/// Tabla contenedora de las medidas DAX del tablero.
+table Medidas
+
+	/// Cantidad de pedidos en el contexto actual.
+	measure 'Total Pedidos' = COUNTROWS ( Pedidos )
+		formatString: #,0
+
+	/// Pedidos con estado Entregado y fecha de entrega al cliente.
+	measure 'Pedidos Entregados' = CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Estado de entrega] <> "No entregado" )
+		formatString: #,0
+
+	/// Proporción de pedidos que llegaron al cliente.
+	measure '% Pedidos Entregados' = DIVIDE ( [Pedidos Entregados], [Total Pedidos] )
+		formatString: 0.0%
+
+	/// Pedidos entregados en o antes de la fecha estimada.
+	measure 'Pedidos A Tiempo' = CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Estado de entrega] = "A tiempo" )
+		formatString: #,0
+
+	/// Pedidos entregados después de la fecha estimada (defectos del proceso).
+	measure 'Pedidos Con Retraso' = CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Estado de entrega] = "Con retraso" )
+		formatString: #,0
+
+	/// Cumplimiento del acuerdo de nivel de servicio (SLA) de entrega.
+	measure '% Entregas A Tiempo' = DIVIDE ( [Pedidos A Tiempo], [Pedidos Entregados] )
+		formatString: 0.0%
+
+	/// Meta del SLA de entrega definida para el proceso.
+	measure 'Meta % A Tiempo' = 0.95
+		formatString: 0.0%
+
+	/// Diferencia entre el cumplimiento real y la meta.
+	measure 'Brecha vs Meta' = IF ( NOT ISBLANK ( [% Entregas A Tiempo] ), [% Entregas A Tiempo] - [Meta % A Tiempo] )
+		formatString: +0.0%;-0.0%;0.0%
+
+	/// Semáforo del SLA: cumple, en riesgo (a menos de 3 puntos) o no cumple.
+	measure 'Estado de la Meta' = ```
+			VAR Valor = [% Entregas A Tiempo]
+			VAR Meta = [Meta % A Tiempo]
+			RETURN
+			    SWITCH (
+			        TRUE (),
+			        ISBLANK ( Valor ), BLANK (),
+			        Valor >= Meta, "🟢 Cumple",
+			        Valor >= Meta - 0.03, "🟡 En riesgo",
+			        "🔴 No cumple"
+			    )
+			```
+
+	/// Horas promedio entre la compra y la aprobación del pago.
+	measure 'Horas Promedio de Aprobación' = AVERAGE ( Pedidos[Horas de aprobación] )
+		formatString: 0.0
+
+	/// Tiempo de aprobación expresado en días (para comparar etapas).
+	measure 'Días Promedio de Aprobación' = DIVIDE ( [Horas Promedio de Aprobación], 24 )
+		formatString: 0.00
+
+	/// Días promedio entre la aprobación y la entrega al transportista.
+	measure 'Días Promedio de Preparación' = AVERAGE ( Pedidos[Días de preparación] )
+		formatString: 0.00
+
+	/// Días promedio entre el transportista y la entrega al cliente.
+	measure 'Días Promedio de Transporte' = AVERAGE ( Pedidos[Días de transporte] )
+		formatString: 0.00
+
+	/// Días promedio desde la compra hasta la entrega al cliente.
+	measure 'Días Promedio de Ciclo' = AVERAGE ( Pedidos[Días de ciclo total] )
+		formatString: 0.0
+
+	/// Días promedio de retraso de los pedidos entregados tarde.
+	measure 'Días Promedio de Retraso' = CALCULATE ( AVERAGE ( Pedidos[Días vs estimado] ), Pedidos[Estado de entrega] = "Con retraso" )
+		formatString: 0.0
+
+	/// Días promedio en que la entrega se adelanta a la fecha estimada.
+	measure 'Días de Holgura Promedio' = ```
+			VAR Diferencia = AVERAGE ( Pedidos[Días vs estimado] )
+			RETURN
+			    IF ( NOT ISBLANK ( Diferencia ), -Diferencia )
+			```
+		formatString: 0.0
+
+	/// Defectos (entregas con retraso) por millón de oportunidades - Lean Six Sigma.
+	measure 'DPMO Entregas' = DIVIDE ( [Pedidos Con Retraso], [Pedidos Entregados] ) * 1000000
+		formatString: #,0
+
+	/// Nivel sigma del proceso de entrega (con desplazamiento de 1,5).
+	measure 'Nivel Sigma' = ```
+			VAR TasaDefectos = DIVIDE ( [Pedidos Con Retraso], [Pedidos Entregados] )
+			RETURN
+			    IF (
+			        NOT ISBLANK ( TasaDefectos ) && TasaDefectos > 0 && TasaDefectos < 1,
+			        NORM.S.INV ( 1 - TasaDefectos ) + 1.5
+			    )
+			```
+		formatString: 0.00
+
+	/// Pedidos que no se completaron por cancelación o falta de producto.
+	measure 'Pedidos Cancelados o No Disponibles' = CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Estado del pedido] IN { "Cancelado", "No disponible" } )
+		formatString: #,0
+
+	/// Proporción de pedidos cancelados o no disponibles.
+	measure '% Cancelación' = DIVIDE ( [Pedidos Cancelados o No Disponibles], [Total Pedidos] )
+		formatString: 0.00%
+
+	/// Pedidos que aún no terminan el proceso (creados, aprobados, en proceso, facturados o enviados).
+	measure 'Pedidos en Curso' = CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Estado del pedido] IN { "Creado", "Aprobado", "En proceso", "Facturado", "Enviado" } )
+		formatString: #,0
+
+	/// Pedidos con fechas del proceso que no son coherentes (detectados en el ETL).
+	measure 'Registros con Inconsistencias' = CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Calidad del registro] <> "Sin inconsistencias" )
+		formatString: #,0
+
+	/// Proporción de registros con fechas inconsistentes.
+	measure '% Registros con Inconsistencias' = DIVIDE ( [Registros con Inconsistencias], [Total Pedidos] )
+		formatString: 0.00%
+
+	/// Participación de cada estado del pedido sobre el total.
+	measure '% del Total de Pedidos' = DIVIDE ( [Total Pedidos], CALCULATE ( [Total Pedidos], ALL ( Pedidos[Estado del pedido] ) ) )
+		formatString: 0.00%
+
+	/// Pedidos que llegaron al menos a cada etapa del proceso (embudo).
+	measure 'Pedidos que Alcanzan la Etapa' = ```
+			SWITCH (
+			    SELECTEDVALUE ( Etapas[Orden] ),
+			    1, [Total Pedidos],
+			    2, COUNT ( Pedidos[Fecha de aprobación] ),
+			    3, COUNT ( Pedidos[Fecha entrega a transportista] ),
+			    4, [Pedidos Entregados]
+			)
+			```
+		formatString: #,0
+
+	/// Proporción de pedidos que alcanzan cada etapa respecto al total.
+	measure '% Avance del Proceso' = DIVIDE ( [Pedidos que Alcanzan la Etapa], [Total Pedidos] )
+		formatString: 0.0%
+
+	column Value
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Value]
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Medidas = calculated
+		mode: import
+		source = ```
+				{0}
+				```

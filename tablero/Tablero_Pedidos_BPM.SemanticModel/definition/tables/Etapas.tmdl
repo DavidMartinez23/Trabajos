@@ -1,0 +1,34 @@
+/// Etapas del proceso de pedido usadas en el embudo (tabla desconectada).
+table Etapas
+
+	column Orden
+		dataType: int64
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Orden
+
+		annotation SummarizationSetBy = Automatic
+
+	column Etapa
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Etapa
+		sortByColumn: Orden
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Etapas = m
+		mode: import
+		source =
+				let
+				    // Etapas del proceso de pedido (modelo BPM) para el embudo
+				    Etapas = #table(type table [Orden = Int64.Type, Etapa = text], {
+				        {1, "1. Compra registrada"},
+				        {2, "2. Pago aprobado"},
+				        {3, "3. Entregado al transportista"},
+				        {4, "4. Entregado al cliente"}})
+				in
+				    Etapas
+
+	annotation PBI_ResultType = Table
