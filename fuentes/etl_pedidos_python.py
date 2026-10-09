@@ -49,29 +49,6 @@ def etl(ruta):
     return o
 
 
-if __name__ == "__main__":
-    o = etl(sys.argv[1])
-    ent = o[o["Estado de entrega"] != "No entregado"]
-    tarde = o[o["Estado de entrega"] == "Con retraso"]
-    print("Pedidos después del ETL:", len(o))
-    print("% entregados:", round(len(ent) / len(o) * 100, 2))
-    print("% entregas a tiempo:", round((ent["Estado de entrega"] == "A tiempo").mean() * 100, 2))
-    print("Pedidos con retraso:", len(tarde), "| días promedio de retraso:", round(tarde["Días vs. estimado"].mean(), 2))
-    print("Días promedio vs. estimado (entregados):", round(ent["Días vs. estimado"].mean(), 2))
-    for c in ["Horas de aprobación", "Días de preparación", "Días de transporte", "Días de ciclo total"]:
-        print(f"{c} (promedio):", round(o[c].mean(), 2))
-    print("% cancelados + no disponibles:", round(o.Estado.isin(["Cancelado", "No disponible"]).mean() * 100, 2))
-    print("\nEstados:\n", o.Estado.value_counts().to_string())
-    print("\nCalidad del registro:\n", o["Calidad del registro"].value_counts().to_string())
-    print("\nEtapas alcanzadas: compra", len(o), "| aprobado", o.order_approved_at.notna().sum(),
-          "| transportista", o.order_delivered_carrier_date.notna().sum(), "| entregado", len(ent))
-    m = o.groupby(o.order_purchase_timestamp.dt.to_period("M"))
-    print("\nPor mes (pedidos, % a tiempo):")
-    print(pd.DataFrame({"pedidos": m.size(),
-                        "%a_tiempo": m.apply(lambda g: round((g["Estado de entrega"] == "A tiempo").sum() /
-                                                            max((g["Estado de entrega"] != "No entregado").sum(), 1) * 100, 1))}).to_string())
-
-
 def indicadores_bsc(o):
     """Valores esperados de los indicadores del Balanced Scorecard (periodo completo)."""
     ent = o[o["Estado de entrega"] != "No entregado"]
@@ -97,3 +74,30 @@ def indicadores_bsc(o):
         "4.3 Mejora % a tiempo vs año anterior (pp)": (a_tiempo(a18) - a_tiempo(a17)) * 100,
         "(días del calendario)": dias,
     }
+
+
+if __name__ == "__main__":
+    o = etl(sys.argv[1])
+    ent = o[o["Estado de entrega"] != "No entregado"]
+    tarde = o[o["Estado de entrega"] == "Con retraso"]
+    print("Pedidos después del ETL:", len(o))
+    print("% entregados:", round(len(ent) / len(o) * 100, 2))
+    print("% entregas a tiempo:", round((ent["Estado de entrega"] == "A tiempo").mean() * 100, 2))
+    print("Pedidos con retraso:", len(tarde), "| días promedio de retraso:", round(tarde["Días vs. estimado"].mean(), 2))
+    print("Días promedio vs. estimado (entregados):", round(ent["Días vs. estimado"].mean(), 2))
+    for c in ["Horas de aprobación", "Días de preparación", "Días de transporte", "Días de ciclo total"]:
+        print(f"{c} (promedio):", round(o[c].mean(), 2))
+    print("% cancelados + no disponibles:", round(o.Estado.isin(["Cancelado", "No disponible"]).mean() * 100, 2))
+    print("\nEstados:\n", o.Estado.value_counts().to_string())
+    print("\nCalidad del registro:\n", o["Calidad del registro"].value_counts().to_string())
+    print("\nEtapas alcanzadas: compra", len(o), "| aprobado", o.order_approved_at.notna().sum(),
+          "| transportista", o.order_delivered_carrier_date.notna().sum(), "| entregado", len(ent))
+    m = o.groupby(o.order_purchase_timestamp.dt.to_period("M"))
+    print("\nPor mes (pedidos, % a tiempo):")
+    print(pd.DataFrame({"pedidos": m.size(),
+                        "%a_tiempo": m.apply(lambda g: round((g["Estado de entrega"] == "A tiempo").sum() /
+                                                            max((g["Estado de entrega"] != "No entregado").sum(), 1) * 100, 1))}).to_string())
+
+    print("\nIndicadores del Balanced Scorecard:")
+    for k, v in indicadores_bsc(o).items():
+        print(f"  {k}: {v:.4f}")

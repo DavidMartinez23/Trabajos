@@ -1,0 +1,141 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.5.0/schema.json",
+  "name": "834ec49eded7f8e7de30",
+  "position": {
+    "x": 648,
+    "y": 464,
+    "z": 8000,
+    "height": 248,
+    "width": 616,
+    "tabOrder": 8000
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Revisión de datos en el ETL (Power Query)",
+                    "textStyle": {
+                      "fontSize": "13pt",
+                      "color": "#1F4E79",
+                      "fontFamily": "Segoe (Bold)"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "• Cada columna con su tipo: textos (IDs, estado), fecha/hora (5 fechas), enteros y decimales (tiempos).",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "color": "#1B2631"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "• Duplicados por ID eliminados; meses incompletos filtrados (2016 y sep-oct 2018); vacíos → null.",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "color": "#1B2631"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "• Se marca cada pedido cuyas fechas no siguen el orden compra → aprobación → transportista → cliente.",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "color": "#1B2631"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "• Las duraciones negativas no entran en los promedios (quedan en null).",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "color": "#1B2631"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "border": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "color": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#D5DBE1'"
+                    }
+                  }
+                }
+              }
+            },
+            "radius": {
+              "expr": {
+                "Literal": {
+                  "Value": "8D"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "dropShadow": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

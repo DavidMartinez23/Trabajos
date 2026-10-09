@@ -1,0 +1,221 @@
+/// Tabla de hechos: un registro por pedido (lado muchos de las relaciones con Calendario, Estados y Rangos).
+table Pedidos
+
+	column 'ID Pedido'
+		dataType: string
+		summarizeBy: none
+		sourceColumn: ID Pedido
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'ID Cliente'
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: ID Cliente
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Estado del pedido'
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: Estado del pedido
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Fecha y hora de compra'
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn
+		summarizeBy: none
+		sourceColumn: Fecha y hora de compra
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Fecha de aprobación'
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn
+		summarizeBy: none
+		sourceColumn: Fecha de aprobación
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Fecha entrega a transportista'
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn
+		summarizeBy: none
+		sourceColumn: Fecha entrega a transportista
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Fecha entrega al cliente'
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn
+		summarizeBy: none
+		sourceColumn: Fecha entrega al cliente
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Fecha estimada de entrega'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		summarizeBy: none
+		sourceColumn: Fecha estimada de entrega
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column 'Fecha de compra'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		summarizeBy: none
+		sourceColumn: Fecha de compra
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column 'Hora de compra'
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Hora de compra
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Horas de aprobación'
+		dataType: double
+		formatString: 0.00
+		summarizeBy: none
+		sourceColumn: Horas de aprobación
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Días de preparación'
+		dataType: double
+		formatString: 0.00
+		summarizeBy: none
+		sourceColumn: Días de preparación
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Días de transporte'
+		dataType: double
+		formatString: 0.00
+		summarizeBy: none
+		sourceColumn: Días de transporte
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Días de ciclo total'
+		dataType: double
+		formatString: 0.00
+		summarizeBy: none
+		sourceColumn: Días de ciclo total
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Días vs estimado'
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Días vs estimado
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Estado de entrega'
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Estado de entrega
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Rango de retraso'
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: Rango de retraso
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Calidad del registro'
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Calidad del registro
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Pedidos = m
+		mode: import
+		source =
+				let
+				    // Fuente: archivo CSV de pedidos de Olist (UTF-8, separado por comas)
+				    Origen = Csv.Document(File.Contents(RutaDatos & "olist_orders_dataset.csv"), [Delimiter = ",", Columns = 8, Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    #"Encabezados promovidos" = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    // Las fechas faltantes llegan como texto vacío: se reemplazan por null
+				    #"Vacíos reemplazados por null" = Table.ReplaceValue(#"Encabezados promovidos", "", null, Replacer.ReplaceValue, {"order_approved_at", "order_delivered_carrier_date", "order_delivered_customer_date"}),
+				    // Limpieza de texto: espacios sobrantes y estados en minúscula
+				    #"Textos limpiados" = Table.TransformColumns(#"Vacíos reemplazados por null", {{"order_id", Text.Trim, type text}, {"customer_id", Text.Trim, type text}, {"order_status", each Text.Lower(Text.Trim(_)), type text}}),
+				    // Tipos de fecha con cultura en-US para leer el formato ISO sin depender de la configuración regional
+				    #"Tipos cambiados" = Table.TransformColumnTypes(#"Textos limpiados", {{"order_purchase_timestamp", type datetime}, {"order_approved_at", type datetime}, {"order_delivered_carrier_date", type datetime}, {"order_delivered_customer_date", type datetime}, {"order_estimated_delivery_date", type datetime}}, "en-US"),
+				    #"Duplicados quitados" = Table.Distinct(#"Tipos cambiados", {"order_id"}),
+				    // Solo meses completos: se excluyen 2016 (datos escasos) y sep-oct 2018 (mes incompleto)
+				    #"Filtrado periodo completo" = Table.SelectRows(#"Duplicados quitados", each [order_purchase_timestamp] >= #datetime(2017, 1, 1, 0, 0, 0) and [order_purchase_timestamp] < #datetime(2018, 9, 1, 0, 0, 0)),
+				    MapaEstados = [delivered = "Entregado", shipped = "Enviado", canceled = "Cancelado", unavailable = "No disponible", invoiced = "Facturado", processing = "En proceso", created = "Creado", approved = "Aprobado"],
+				    #"Estados traducidos" = Table.TransformColumns(#"Filtrado periodo completo", {{"order_status", each Record.FieldOrDefault(MapaEstados, _, _), type text}}),
+				    #"Agregada fecha de compra" = Table.AddColumn(#"Estados traducidos", "purchase_date", each DateTime.Date([order_purchase_timestamp]), type date),
+				    #"Agregada hora de compra" = Table.AddColumn(#"Agregada fecha de compra", "purchase_hour", each Time.Hour([order_purchase_timestamp]), Int64.Type),
+				    // Etapa 1 del proceso: compra -> aprobación del pago (horas)
+				    #"Agregadas horas de aprobación" = Table.AddColumn(#"Agregada hora de compra", "approval_hours", each if [order_approved_at] = null then null else Number.Round(Duration.TotalHours([order_approved_at] - [order_purchase_timestamp]), 2), type nullable number),
+				    // Etapa 2: aprobación -> entrega al transportista (días); valores negativos son inconsistentes y quedan en null
+				    #"Agregados días de preparación" = Table.AddColumn(#"Agregadas horas de aprobación", "prep_days", each
+				        let d = if [order_approved_at] = null or [order_delivered_carrier_date] = null then null else Duration.TotalDays([order_delivered_carrier_date] - [order_approved_at])
+				        in if d = null or d < 0 then null else Number.Round(d, 2), type nullable number),
+				    // Etapa 3: transportista -> cliente (días); valores negativos quedan en null
+				    #"Agregados días de transporte" = Table.AddColumn(#"Agregados días de preparación", "transit_days", each
+				        let d = if [order_delivered_carrier_date] = null or [order_delivered_customer_date] = null then null else Duration.TotalDays([order_delivered_customer_date] - [order_delivered_carrier_date])
+				        in if d = null or d < 0 then null else Number.Round(d, 2), type nullable number),
+				    #"Agregada marca de entrega" = Table.AddColumn(#"Agregados días de transporte", "is_delivered", each [order_status] = "Entregado" and [order_delivered_customer_date] <> null, type logical),
+				    // Tiempo de ciclo completo: compra -> entrega al cliente
+				    #"Agregados días de ciclo" = Table.AddColumn(#"Agregada marca de entrega", "cycle_days", each if [is_delivered] then Number.Round(Duration.TotalDays([order_delivered_customer_date] - [order_purchase_timestamp]), 2) else null, type nullable number),
+				    // Diferencia contra la fecha prometida: negativo = antes de lo estimado, positivo = retraso
+				    #"Agregados días vs estimado" = Table.AddColumn(#"Agregados días de ciclo", "days_vs_estimate", each if [is_delivered] then Duration.Days(DateTime.Date([order_delivered_customer_date]) - DateTime.Date([order_estimated_delivery_date])) else null, Int64.Type),
+				    #"Agregado estado de entrega" = Table.AddColumn(#"Agregados días vs estimado", "delivery_status", each if not [is_delivered] then "No entregado" else if [days_vs_estimate] <= 0 then "A tiempo" else "Con retraso", type text),
+				    #"Agregado rango de retraso" = Table.AddColumn(#"Agregado estado de entrega", "delay_range", each
+				        if [delivery_status] <> "Con retraso" then [delivery_status]
+				        else if [days_vs_estimate] <= 3 then "1 a 3 días"
+				        else if [days_vs_estimate] <= 7 then "4 a 7 días"
+				        else if [days_vs_estimate] <= 14 then "8 a 14 días"
+				        else "Más de 14 días", type text),
+				    // Validación de consistencia de las fechas del proceso (se marca la primera regla que se incumple)
+				    #"Agregada calidad del registro" = Table.AddColumn(#"Agregado rango de retraso", "record_quality", each
+				        if [order_status] = "Entregado" and [order_delivered_customer_date] = null then "Entregado sin fecha de entrega"
+				        else if [order_status] = "Cancelado" and [order_delivered_customer_date] <> null then "Cancelado con fecha de entrega"
+				        else if [order_delivered_carrier_date] <> null and [order_delivered_carrier_date] < [order_purchase_timestamp] then "Transportista antes de la compra"
+				        else if [order_delivered_carrier_date] <> null and [order_approved_at] <> null and [order_delivered_carrier_date] < [order_approved_at] then "Transportista antes de la aprobación"
+				        else if [order_delivered_customer_date] <> null and [order_delivered_carrier_date] <> null and [order_delivered_customer_date] < [order_delivered_carrier_date] then "Entrega antes del transportista"
+				        else if [order_status] = "Entregado" and [order_approved_at] = null then "Entregado sin fecha de aprobación"
+				        else "Sin inconsistencias", type text),
+				    #"Columna auxiliar quitada" = Table.RemoveColumns(#"Agregada calidad del registro", {"is_delivered"}),
+				    #"Columnas renombradas" = Table.RenameColumns(#"Columna auxiliar quitada", {
+				        {"order_id", "ID Pedido"}, {"customer_id", "ID Cliente"}, {"order_status", "Estado del pedido"},
+				        {"order_purchase_timestamp", "Fecha y hora de compra"}, {"order_approved_at", "Fecha de aprobación"},
+				        {"order_delivered_carrier_date", "Fecha entrega a transportista"}, {"order_delivered_customer_date", "Fecha entrega al cliente"},
+				        {"order_estimated_delivery_date", "Fecha estimada de entrega"}, {"purchase_date", "Fecha de compra"}, {"purchase_hour", "Hora de compra"},
+				        {"approval_hours", "Horas de aprobación"}, {"prep_days", "Días de preparación"}, {"transit_days", "Días de transporte"},
+				        {"cycle_days", "Días de ciclo total"}, {"days_vs_estimate", "Días vs estimado"}, {"delivery_status", "Estado de entrega"},
+				        {"delay_range", "Rango de retraso"}, {"record_quality", "Calidad del registro"}}),
+				    // Revisión final del formato de cada columna: texto, fecha/hora, fecha, entero o decimal
+				    #"Tipos verificados por columna" = Table.TransformColumnTypes(#"Columnas renombradas", {
+				        {"ID Pedido", type text}, {"ID Cliente", type text}, {"Estado del pedido", type text},
+				        {"Fecha y hora de compra", type datetime}, {"Fecha de aprobación", type datetime},
+				        {"Fecha entrega a transportista", type datetime}, {"Fecha entrega al cliente", type datetime},
+				        {"Fecha estimada de entrega", type date}, {"Fecha de compra", type date}, {"Hora de compra", Int64.Type},
+				        {"Horas de aprobación", type number}, {"Días de preparación", type number}, {"Días de transporte", type number},
+				        {"Días de ciclo total", type number}, {"Días vs estimado", Int64.Type}, {"Estado de entrega", type text},
+				        {"Rango de retraso", type text}, {"Calidad del registro", type text}})
+				in
+				    #"Tipos verificados por columna"
+
+	annotation PBI_ResultType = Table

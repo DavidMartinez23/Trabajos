@@ -1,8 +1,0 @@
-{
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/1.3.0/schema.json",
-  "name": "d14ab9590363ef89bb30",
-  "displayName": "2. Tiempos por etapa",
-  "displayOption": "FitToPage",
-  "height": 720,
-  "width": 1280
-}

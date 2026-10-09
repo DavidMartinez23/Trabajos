@@ -1,0 +1,291 @@
+/// Tabla contenedora de las medidas DAX del tablero.
+table Medidas
+
+	/// Cantidad de pedidos en el contexto actual.
+	measure 'Total Pedidos' = COUNTROWS ( Pedidos )
+		formatString: #,0
+
+	/// Pedidos con estado Entregado y fecha de entrega al cliente.
+	measure 'Pedidos Entregados' = CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Estado de entrega] <> "No entregado" )
+		formatString: #,0
+
+	/// Proporción de pedidos que llegaron al cliente.
+	measure '% Pedidos Entregados' = DIVIDE ( [Pedidos Entregados], [Total Pedidos] )
+		formatString: 0.0%
+
+	/// Pedidos entregados en o antes de la fecha estimada.
+	measure 'Pedidos A Tiempo' = CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Estado de entrega] = "A tiempo" )
+		formatString: #,0
+
+	/// Pedidos entregados después de la fecha estimada (defectos del proceso).
+	measure 'Pedidos Con Retraso' = CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Estado de entrega] = "Con retraso" )
+		formatString: #,0
+
+	/// Cumplimiento del acuerdo de nivel de servicio (SLA) de entrega.
+	measure '% Entregas A Tiempo' = DIVIDE ( [Pedidos A Tiempo], [Pedidos Entregados] )
+		formatString: 0.0%
+
+	/// Meta del SLA de entrega definida para el proceso.
+	measure 'Meta % A Tiempo' = 0.95
+		formatString: 0.0%
+
+	/// Diferencia entre el cumplimiento real y la meta.
+	measure 'Brecha vs Meta' = IF ( NOT ISBLANK ( [% Entregas A Tiempo] ), [% Entregas A Tiempo] - [Meta % A Tiempo] )
+		formatString: +0.0%;-0.0%;0.0%
+
+	/// Semáforo del SLA: cumple, en riesgo (a menos de 3 puntos) o no cumple.
+	measure 'Estado de la Meta' = ```
+			VAR Valor = [% Entregas A Tiempo]
+			VAR Meta = [Meta % A Tiempo]
+			RETURN
+			    SWITCH (
+			        TRUE (),
+			        ISBLANK ( Valor ), BLANK (),
+			        Valor >= Meta, "🟢 Cumple",
+			        Valor >= Meta - 0.03, "🟡 En riesgo",
+			        "🔴 No cumple"
+			    )
+			```
+
+	/// Horas promedio entre la compra y la aprobación del pago.
+	measure 'Horas Promedio de Aprobación' = AVERAGE ( Pedidos[Horas de aprobación] )
+		formatString: 0.0
+
+	/// Tiempo de aprobación expresado en días (para comparar etapas).
+	measure 'Días Promedio de Aprobación' = DIVIDE ( [Horas Promedio de Aprobación], 24 )
+		formatString: 0.00
+
+	/// Días promedio entre la aprobación y la entrega al transportista.
+	measure 'Días Promedio de Preparación' = AVERAGE ( Pedidos[Días de preparación] )
+		formatString: 0.00
+
+	/// Días promedio entre el transportista y la entrega al cliente.
+	measure 'Días Promedio de Transporte' = AVERAGE ( Pedidos[Días de transporte] )
+		formatString: 0.00
+
+	/// Días promedio desde la compra hasta la entrega al cliente.
+	measure 'Días Promedio de Ciclo' = AVERAGE ( Pedidos[Días de ciclo total] )
+		formatString: 0.0
+
+	/// Días promedio de retraso de los pedidos entregados tarde.
+	measure 'Días Promedio de Retraso' = CALCULATE ( AVERAGE ( Pedidos[Días vs estimado] ), Pedidos[Estado de entrega] = "Con retraso" )
+		formatString: 0.0
+
+	/// Días promedio en que la entrega se adelanta a la fecha estimada.
+	measure 'Días de Holgura Promedio' = ```
+			VAR Diferencia = AVERAGE ( Pedidos[Días vs estimado] )
+			RETURN
+			    IF ( NOT ISBLANK ( Diferencia ), -Diferencia )
+			```
+		formatString: 0.0
+
+	/// Defectos (entregas con retraso) por millón de oportunidades - Lean Six Sigma.
+	measure 'DPMO Entregas' = DIVIDE ( [Pedidos Con Retraso], [Pedidos Entregados] ) * 1000000
+		formatString: #,0
+
+	/// Nivel sigma del proceso de entrega (con desplazamiento de 1,5).
+	measure 'Nivel Sigma' = ```
+			VAR TasaDefectos = DIVIDE ( [Pedidos Con Retraso], [Pedidos Entregados] )
+			RETURN
+			    IF (
+			        NOT ISBLANK ( TasaDefectos ) && TasaDefectos > 0 && TasaDefectos < 1,
+			        NORM.S.INV ( 1 - TasaDefectos ) + 1.5
+			    )
+			```
+		formatString: 0.00
+
+	/// Pedidos que no se completaron por cancelación o falta de producto.
+	measure 'Pedidos Cancelados o No Disponibles' = CALCULATE ( COUNTROWS ( Pedidos ), Estados[Fase del proceso] = "Perdido" )
+		formatString: #,0
+
+	/// Proporción de pedidos cancelados o no disponibles.
+	measure '% Pedidos Perdidos' = DIVIDE ( [Pedidos Cancelados o No Disponibles], [Total Pedidos] )
+		formatString: 0.00%
+
+	/// Pedidos que aún no terminan el proceso (creados, aprobados, en proceso, facturados o enviados).
+	measure 'Pedidos en Curso' = CALCULATE ( COUNTROWS ( Pedidos ), Estados[Fase del proceso] = "En curso" )
+		formatString: #,0
+
+	/// Pedidos con fechas del proceso que no son coherentes (detectados en el ETL).
+	measure 'Registros con Inconsistencias' = CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Calidad del registro] <> "Sin inconsistencias" )
+		formatString: #,0
+
+	/// Proporción de registros con fechas inconsistentes.
+	measure '% Registros con Inconsistencias' = DIVIDE ( [Registros con Inconsistencias], [Total Pedidos] )
+		formatString: 0.00%
+
+	/// Participación de cada estado del pedido sobre el total.
+	measure '% del Total de Pedidos' = DIVIDE ( [Total Pedidos], CALCULATE ( [Total Pedidos], ALL ( Estados ) ) )
+		formatString: 0.00%
+
+	/// Pedidos que llegaron al menos a cada etapa del proceso (embudo).
+	measure 'Pedidos que Alcanzan la Etapa' = ```
+			SWITCH (
+			    SELECTEDVALUE ( Etapas[Orden] ),
+			    1, [Total Pedidos],
+			    2, COUNT ( Pedidos[Fecha de aprobación] ),
+			    3, COUNT ( Pedidos[Fecha entrega a transportista] ),
+			    4, [Pedidos Entregados]
+			)
+			```
+		formatString: #,0
+
+	/// Proporción de pedidos que alcanzan cada etapa respecto al total.
+	measure '% Avance del Proceso' = DIVIDE ( [Pedidos que Alcanzan la Etapa], [Total Pedidos] )
+		formatString: 0.0%
+
+	/// Pedidos entregados con más de 7 días de retraso sobre el total entregado.
+	measure '% Retrasos Mayores a 7 Días' = DIVIDE ( CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Días vs estimado] > 7 ), [Pedidos Entregados] )
+		formatString: 0.00%
+
+	/// Pedidos cuyas fechas cumplen todas las reglas de calidad.
+	measure '% Registros Consistentes' = DIVIDE ( CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Calidad del registro] = "Sin inconsistencias" ), [Total Pedidos] )
+		formatString: 0.00%
+
+	/// Capacidad operativa: pedidos por día calendario del periodo.
+	measure 'Pedidos Promedio por Día' = DIVIDE ( [Total Pedidos], COUNTROWS ( Calendario ) )
+		formatString: #,0.0
+
+	/// Pedidos del año frente a los mismos meses del año anterior (por defecto 2018 vs 2017, enero-agosto).
+	measure 'Crecimiento Interanual de Pedidos' = ```
+			VAR UltimaFecha = CALCULATE ( MAX ( Calendario[Fecha] ), REMOVEFILTERS ( Calendario ) )
+			VAR AnioActual = IF ( HASONEVALUE ( Calendario[Año] ), VALUES ( Calendario[Año] ), YEAR ( UltimaFecha ) )
+			VAR MesFin = IF ( AnioActual = YEAR ( UltimaFecha ), MONTH ( UltimaFecha ), 12 )
+			VAR Actual = CALCULATE ( [Total Pedidos], REMOVEFILTERS ( Calendario ), Calendario[Año] = AnioActual, Calendario[Mes número] <= MesFin )
+			VAR Anterior = CALCULATE ( [Total Pedidos], REMOVEFILTERS ( Calendario ), Calendario[Año] = AnioActual - 1, Calendario[Mes número] <= MesFin )
+			RETURN
+			    DIVIDE ( Actual - Anterior, Anterior )
+			```
+		formatString: +0.0%;-0.0%;0.0%
+
+	/// Puntos porcentuales de mejora del % a tiempo frente a los mismos meses del año anterior.
+	measure 'Mejora A Tiempo vs Año Anterior' = ```
+			VAR UltimaFecha = CALCULATE ( MAX ( Calendario[Fecha] ), REMOVEFILTERS ( Calendario ) )
+			VAR AnioActual = IF ( HASONEVALUE ( Calendario[Año] ), VALUES ( Calendario[Año] ), YEAR ( UltimaFecha ) )
+			VAR MesFin = IF ( AnioActual = YEAR ( UltimaFecha ), MONTH ( UltimaFecha ), 12 )
+			VAR Actual = CALCULATE ( [% Entregas A Tiempo], REMOVEFILTERS ( Calendario ), Calendario[Año] = AnioActual, Calendario[Mes número] <= MesFin )
+			VAR Anterior = CALCULATE ( [% Entregas A Tiempo], REMOVEFILTERS ( Calendario ), Calendario[Año] = AnioActual - 1, Calendario[Mes número] <= MesFin )
+			RETURN
+			    IF ( NOT ISBLANK ( Actual ) && NOT ISBLANK ( Anterior ), Actual - Anterior )
+			```
+		formatString: +0.0%;-0.0%;0.0%
+
+	/// Valor actual del indicador BSC seleccionado.
+	measure 'Valor Indicador' = ```
+			SWITCH (
+			    SELECTEDVALUE ( Indicadores[Código] ),
+			    "1.1", [Crecimiento Interanual de Pedidos],
+			    "1.2", [% Pedidos Entregados],
+			    "1.3", [% Pedidos Perdidos],
+			    "2.1", [% Entregas A Tiempo],
+			    "2.2", [Días Promedio de Retraso],
+			    "2.3", [% Retrasos Mayores a 7 Días],
+			    "2.4", [Días de Holgura Promedio],
+			    "3.1", [Días Promedio de Ciclo],
+			    "3.2", [Horas Promedio de Aprobación],
+			    "3.3", [Días Promedio de Preparación],
+			    "3.4", [Días Promedio de Transporte],
+			    "4.1", [% Registros Consistentes],
+			    "4.2", [Pedidos Promedio por Día],
+			    "4.3", [Mejora A Tiempo vs Año Anterior]
+			)
+			```
+		formatString: 0.00
+
+	/// Meta definida para el indicador BSC seleccionado.
+	measure 'Meta Indicador' = SELECTEDVALUE ( Indicadores[Meta] )
+		formatString: 0.00
+
+	/// 1 = cumple, 0,5 = en riesgo (dentro de la tolerancia), 0 = no cumple.
+	measure 'Estado Numérico' = ```
+			VAR Valor = [Valor Indicador]
+			VAR Meta = [Meta Indicador]
+			VAR Tolerancia = SELECTEDVALUE ( Indicadores[Tolerancia] )
+			VAR MayorEsMejor = SELECTEDVALUE ( Indicadores[Sentido] ) = "Mayor es mejor"
+			RETURN
+			    IF (
+			        NOT ISBLANK ( Valor ) && NOT ISBLANK ( Meta ),
+			        IF (
+			            MayorEsMejor,
+			            IF ( Valor >= Meta, 1, IF ( Valor >= Meta - Tolerancia, 0.5, 0 ) ),
+			            IF ( Valor <= Meta, 1, IF ( Valor <= Meta + Tolerancia, 0.5, 0 ) )
+			        )
+			    )
+			```
+		formatString: 0.0
+
+	/// Semáforo del indicador BSC.
+	measure 'Semáforo' = ```
+			VAR E = [Estado Numérico]
+			RETURN
+			    IF ( NOT ISBLANK ( E ), IF ( E = 1, "🟢 Cumple", IF ( E = 0.5, "🟡 En riesgo", "🔴 No cumple" ) ) )
+			```
+
+	/// Valor del indicador con su formato (%, días, horas, pp o número).
+	measure 'Valor Actual' = ```
+			VAR Valor = [Valor Indicador]
+			VAR Formato = SELECTEDVALUE ( Indicadores[Formato] )
+			RETURN
+			    IF (
+			        NOT ISBLANK ( Valor ),
+			        SWITCH (
+			            Formato,
+			            "%", FORMAT ( Valor, "0.0%" ),
+			            "días", FORMAT ( Valor, "0.0" ) & " días",
+			            "horas", FORMAT ( Valor, "0.0" ) & " h",
+			            "pp", FORMAT ( Valor * 100, "+0.0;-0.0;0.0" ) & " pp",
+			            FORMAT ( Valor, "#,0" )
+			        )
+			    )
+			```
+
+	/// Meta del indicador con su formato y sentido (≥ o ≤).
+	measure 'Meta Objetivo' = ```
+			VAR Meta = [Meta Indicador]
+			VAR Formato = SELECTEDVALUE ( Indicadores[Formato] )
+			VAR Signo = IF ( SELECTEDVALUE ( Indicadores[Sentido] ) = "Mayor es mejor", "≥ ", "≤ " )
+			RETURN
+			    IF (
+			        NOT ISBLANK ( Meta ),
+			        Signo
+			            & SWITCH (
+			                Formato,
+			                "%", FORMAT ( Meta, "0.0%" ),
+			                "días", FORMAT ( Meta, "0" ) & " días",
+			                "horas", FORMAT ( Meta, "0" ) & " h",
+			                "pp", FORMAT ( Meta * 100, "0.0" ) & " pp",
+			                FORMAT ( Meta, "#,0" )
+			            )
+			    )
+			```
+
+	/// Promedio del estado de los indicadores (verde = 100 %, amarillo = 50 %, rojo = 0 %).
+	measure 'Cumplimiento BSC' = AVERAGEX ( VALUES ( Indicadores[Código] ), [Estado Numérico] )
+		formatString: 0.0%
+
+	/// Cantidad de indicadores que cumplen la meta.
+	measure 'Indicadores en Verde' = COUNTROWS ( FILTER ( VALUES ( Indicadores[Código] ), [Estado Numérico] = 1 ) ) + 0
+		formatString: 0
+
+	/// Cantidad de indicadores en riesgo (dentro de la tolerancia).
+	measure 'Indicadores en Amarillo' = COUNTROWS ( FILTER ( VALUES ( Indicadores[Código] ), [Estado Numérico] = 0.5 ) ) + 0
+		formatString: 0
+
+	/// Cantidad de indicadores que no cumplen la meta.
+	measure 'Indicadores en Rojo' = COUNTROWS ( FILTER ( VALUES ( Indicadores[Código] ), NOT ISBLANK ( [Estado Numérico] ) && [Estado Numérico] = 0 ) ) + 0
+		formatString: 0
+
+	column Value
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Value]
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Medidas = calculated
+		mode: import
+		source = ```
+				{0}
+				```

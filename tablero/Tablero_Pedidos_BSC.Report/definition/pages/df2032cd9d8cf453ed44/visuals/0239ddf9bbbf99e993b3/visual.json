@@ -1,0 +1,153 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.5.0/schema.json",
+  "name": "0239ddf9bbbf99e993b3",
+  "position": {
+    "x": 864,
+    "y": 464,
+    "z": 7000,
+    "height": 248,
+    "width": 400,
+    "tabOrder": 7000
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Mapa estratégico (causa → efecto)",
+                    "textStyle": {
+                      "fontSize": "13pt",
+                      "color": "#1F4E79",
+                      "fontFamily": "Segoe (Bold)"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "1. Financiera: crecer en pedidos completados y reducir pérdidas.",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "color": "#1B2631"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "▲ 2. Clientes: cumplir la fecha de entrega prometida.",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "color": "#1B2631"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "▲ 3. Procesos internos: aprobar, preparar y transportar más rápido.",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "color": "#1B2631"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "▲ 4. Aprendizaje y crecimiento: datos confiables y más capacidad.",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "color": "#1B2631"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Hallazgo: el transporte (9,3 días) es el cuello de botella que baja la puntualidad (93,2 % vs meta 95 %).",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "color": "#1B2631",
+                      "fontFamily": "Segoe (Bold)"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "border": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "color": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#D5DBE1'"
+                    }
+                  }
+                }
+              }
+            },
+            "radius": {
+              "expr": {
+                "Literal": {
+                  "Value": "8D"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "dropShadow": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

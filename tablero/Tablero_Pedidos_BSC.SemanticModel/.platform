@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "Tablero_Pedidos_BSC"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "aeea90a3-a0a6-368e-c3dc-5d9194bc51f9"
+  }
+}

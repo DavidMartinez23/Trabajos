@@ -10,7 +10,7 @@ from reportlab.platypus import Paragraph, Preformatted, SimpleDocTemplate, Space
 ACC = colors.HexColor("#1F4E79")
 ss = getSampleStyleSheet()
 title = ParagraphStyle("t", parent=ss["Title"], fontSize=16, leading=19, textColor=ACC, spaceAfter=4)
-h1 = ParagraphStyle("h1", parent=ss["Heading2"], fontSize=12.5, leading=15, textColor=ACC, spaceBefore=9, spaceAfter=3)
+h1 = ParagraphStyle("h1", parent=ss["Heading2"], fontSize=12.5, leading=15, textColor=ACC, spaceBefore=9, spaceAfter=3, keepWithNext=1)
 h2 = ParagraphStyle("h2", parent=ss["Heading3"], fontSize=10.5, leading=13, textColor=ACC, spaceBefore=5, spaceAfter=2)
 body = ParagraphStyle("b", parent=ss["Normal"], fontSize=9.4, leading=12.2, alignment=TA_JUSTIFY, spaceAfter=3)
 bul = ParagraphStyle("bl", parent=body, leftIndent=12, bulletIndent=2, spaceAfter=1.5)
@@ -37,127 +37,147 @@ def tabla(filas, anchos):
     S.append(Spacer(1, 5))
 
 
-P("Guía del ETL y del tablero de control – Proceso de pedidos (Olist)", title)
-P("Puntos 2 y 3 de la actividad · Fuente: <i>olist_orders_dataset.csv</i> · Metodología del tablero: <b>BPM</b> "
-  "(Gestión de Procesos de Negocio) con indicadores de Lean Six Sigma.")
+P("Guía del ETL y del tablero Balanced Scorecard – Pedidos Olist", title)
+P("Puntos 2 y 3 de la actividad · Fuente única: <i>olist_orders_dataset.csv</i> · Metodología del tablero: "
+  "<b>Balanced Scorecard</b> (cuadro de mando integral).")
 
 P("1. Perfilado de la base de datos (antes del ETL)", h1)
-P("La base contiene 99.441 pedidos y 8 columnas: identificador del pedido y del cliente, estado del pedido y cinco "
-  "fechas que marcan las etapas del proceso (compra, aprobación del pago, entrega al transportista, entrega al cliente y "
-  "fecha estimada de entrega). Hallazgos de calidad:")
+P("La base tiene 99.441 pedidos y 8 columnas. Todas llegan como texto desde el CSV, así que el primer trabajo del ETL es "
+  "revisar cada columna y darle el tipo y formato correctos.")
 tabla([
     ["Aspecto revisado", "Resultado", "Tratamiento en el ETL"],
-    ["Duplicados por ID de pedido", "0 registros duplicados", "Se deja el paso de quitar duplicados como control"],
-    ["Periodo cubierto", "04/09/2016 a 17/10/2018; 2016 tiene solo 329 pedidos (sin datos en nov.) y "
-     "sep-oct 2018 solo 20", "Se filtra a meses completos: ene 2017 – ago 2018 (se excluyen 349 pedidos)"],
+    ["Duplicados por ID de pedido", "0 duplicados; 99.441 IDs únicos de 32 caracteres", "Paso de quitar duplicados como control"],
+    ["Periodo cubierto", "04/09/2016 a 17/10/2018; 2016 tiene solo 329 pedidos y sep-oct 2018 solo 20",
+     "Filtro a meses completos: ene 2017 – ago 2018 (se excluyen 349 pedidos)"],
     ["Fechas vacías", "Aprobación: 160 · Transportista: 1.783 · Entrega al cliente: 2.965 (pedidos no terminados)",
-     "Texto vacío → null; las métricas de tiempo ignoran los nulos"],
-    ["Formato de fechas y textos", "Fechas ISO (aaaa-mm-dd hh:mm:ss); IDs con comillas mezcladas; estados en inglés",
-     "Tipos con cultura en-US, recorte de espacios y traducción de estados al español"],
-    ["Orden lógico de las fechas", "1.359 pedidos con transportista antes de la aprobación, 166 antes de la compra, "
-     "23 entregas antes del transportista, 8 'delivered' sin fecha de entrega, 14 sin fecha de aprobación",
-     "Se marcan en la columna <i>Calidad del registro</i>; las duraciones negativas quedan en null"],
+     "Texto vacío → null; los promedios ignoran los nulos"],
+    ["Formatos", "Fechas ISO aaaa-mm-dd hh:mm:ss; IDs con comillas mezcladas; estados en inglés",
+     "Tipos con cultura en-US, recorte de espacios, estados en español"],
+    ["Orden lógico de las fechas", "1.359 transportista antes de la aprobación, 166 antes de la compra, 23 entregas antes "
+     "del transportista, 8 'delivered' sin fecha de entrega, 14 sin aprobación",
+     "Se marcan en <i>Calidad del registro</i>; duraciones negativas → null"],
 ], [3.4, 6.8, 6.8])
 
-P("2. Operaciones ETL (Power Query)", h1)
-P("Todo el ETL está en la consulta <b>Pedidos</b> del archivo de Power BI (Inicio → Transformar datos), con un nombre "
-  "descriptivo por paso. El parámetro <b>RutaDatos</b> indica la carpeta de los CSV.")
-P("<b>Extracción (E):</b> lectura del CSV con <i>Csv.Document</i> (UTF-8, separador coma, comillas estándar) y promoción "
-  "de encabezados.", bul)
-P("<b>Transformación (T):</b>", bul)
-for t in [
-    "Reemplazo de textos vacíos por null en las fechas opcionales; recorte de espacios en los identificadores.",
-    "Conversión de tipos (fecha/hora) con cultura en-US para que funcione con cualquier configuración regional de Windows.",
-    "Eliminación de duplicados por ID de pedido y filtro del periodo completo (ene 2017 – ago 2018).",
-    "Traducción de los 8 estados: delivered → Entregado, shipped → Enviado, canceled → Cancelado, unavailable → "
-    "No disponible, invoiced → Facturado, processing → En proceso, created → Creado, approved → Aprobado.",
-    "Columnas calculadas del proceso: <i>Fecha de compra</i> (llave con el calendario), <i>Hora de compra</i>, "
-    "<i>Horas de aprobación</i>, <i>Días de preparación</i> (aprobación → transportista), <i>Días de transporte</i> "
-    "(transportista → cliente), <i>Días de ciclo total</i>, <i>Días vs estimado</i> (negativo = antes de lo prometido).",
-    "Clasificación: <i>Estado de entrega</i> (A tiempo / Con retraso / No entregado) y <i>Rango de retraso</i> "
-    "(1-3, 4-7, 8-14, más de 14 días) con su columna de orden.",
-    "Validación: <i>Calidad del registro</i> aplica 6 reglas de consistencia de fechas y conserva la primera que se incumple.",
-    "Renombrado de todas las columnas al español."]:
-    S.append(Paragraph(t, ParagraphStyle("b2", parent=bul, leftIndent=24, bulletIndent=14), bulletText="–"))
-P("<b>Carga (L):</b> modelo estrella con la tabla de hechos <b>Pedidos</b> (99.092 filas) relacionada (muchos a uno) "
-  "con la dimensión <b>Calendario</b> (generada en Power Query, marcada como tabla de fechas). Se agregan la tabla "
-  "desconectada <b>Etapas</b> (para el embudo) y la tabla <b>Medidas</b> con 26 medidas DAX.", bul)
-
-P("3. Metodología elegida: BPM", h1)
-P("La base describe un <b>proceso</b>: cada pedido pasa por las etapas compra → aprobación del pago → entrega al "
-  "transportista → entrega al cliente. Por eso se eligió BPM, cuya fase de <b>monitoreo</b> mide el desempeño del "
-  "proceso (volumen, tiempos por etapa, cuellos de botella y cumplimiento del acuerdo de servicio, SLA) para "
-  "<b>optimizarlo</b>. Se complementa con Lean Six Sigma: una entrega con retraso es un <i>defecto</i>, y con él se "
-  "calculan los DPMO y el nivel sigma del proceso.")
+P("2. Revisión del formato de cada columna", h1)
+P("El último paso de Power Query (<i>Tipos verificados por columna</i>) fija el tipo de las 18 columnas de la tabla Pedidos, "
+  "y el modelo les asigna un formato de visualización:")
 tabla([
-    ["Página del tablero", "Pregunta BPM", "Contenido"],
-    ["1. Resumen del proceso", "¿Cuántos pedidos entran y hasta dónde llegan?",
-     "Tarjetas KPI, embudo de etapas, pedidos por mes, pedidos por estado y lectura de hallazgos"],
-    ["2. Tiempos por etapa", "¿Dónde está el cuello de botella?",
-     "Composición del tiempo de ciclo por mes (aprobación, preparación, transporte), horas de aprobación por día y detalle mensual"],
-    ["3. Cumplimiento de entregas", "¿Se cumple la fecha prometida (SLA)?",
-     "% a tiempo vs meta del 95 %, semáforo, brecha, días de retraso, nivel sigma, rangos de retraso"],
-    ["4. Excepciones y calidad", "¿Qué pedidos no completan el proceso y qué datos fallan?",
-     "Cancelaciones, pedidos en curso, inconsistencias por regla, % de cancelación por mes y reglas del ETL"],
-], [3.6, 4.6, 8.8])
+    ["Columna original (CSV)", "Columna en el modelo", "Tipo final", "Formato", "Revisión"],
+    ["order_id", "ID Pedido", "Texto", "—", "Sin vacíos ni duplicados; 32 caracteres"],
+    ["customer_id", "ID Cliente", "Texto", "—", "Sin vacíos; un ID por pedido"],
+    ["order_status", "Estado del pedido", "Texto", "—", "8 valores traducidos; llave hacia Estados"],
+    ["order_purchase_timestamp", "Fecha y hora de compra", "Fecha/hora", "dd/mm/aaaa hh:mm", "Sin vacíos"],
+    ["order_approved_at", "Fecha de aprobación", "Fecha/hora", "dd/mm/aaaa hh:mm", "160 vacíos → null"],
+    ["order_delivered_carrier_date", "Fecha entrega a transportista", "Fecha/hora", "dd/mm/aaaa hh:mm", "1.783 vacíos → null"],
+    ["order_delivered_customer_date", "Fecha entrega al cliente", "Fecha/hora", "dd/mm/aaaa hh:mm", "2.965 vacíos → null"],
+    ["order_estimated_delivery_date", "Fecha estimada de entrega", "Fecha", "dd/mm/aaaa", "Siempre a las 00:00 → solo fecha"],
+    ["(calculada)", "Fecha de compra", "Fecha", "dd/mm/aaaa", "Llave hacia Calendario"],
+    ["(calculada)", "Hora de compra", "Entero", "0", "0 a 23"],
+    ["(calculada)", "Horas de aprobación", "Decimal", "0,00", "Compra → aprobación"],
+    ["(calculada)", "Días de preparación / de transporte", "Decimal", "0,00", "Negativos → null"],
+    ["(calculada)", "Días de ciclo total", "Decimal", "0,00", "Solo pedidos entregados"],
+    ["(calculada)", "Días vs estimado", "Entero", "0", "Negativo = antes de lo prometido"],
+    ["(calculada)", "Estado de entrega / Rango de retraso", "Texto", "—", "Rango: llave hacia Rangos"],
+    ["(calculada)", "Calidad del registro", "Texto", "—", "6 reglas de consistencia"],
+], [3.9, 3.9, 1.8, 2.6, 4.8])
+
+P("3. Operaciones ETL (Power Query)", h1)
+P("<b>Extracción:</b> lectura del CSV con <i>Csv.Document</i> (UTF-8, coma, comillas estándar) desde la carpeta del "
+  "parámetro <b>RutaDatos</b> y promoción de encabezados.", bul)
+P("<b>Transformación:</b> vacíos → null, recorte de espacios, tipos con cultura en-US, duplicados quitados, filtro del "
+  "periodo completo, traducción de estados, columnas de tiempo por etapa, clasificación de la entrega (A tiempo / Con "
+  "retraso / No entregado y rango de retraso), reglas de calidad, renombrado al español y verificación final de tipos.", bul)
+P("<b>Carga:</b> modelo en estrella. La tabla de hechos <b>Pedidos</b> (99.092 filas) se relaciona con tres dimensiones "
+  "mediante relaciones <b>uno a muchos</b>:", bul)
+tabla([
+    ["Dimensión (lado 1)", "Filas", "Columna llave", "Tabla de hechos (lado muchos)", "Significado"],
+    ["Calendario", "608 fechas", "Fecha ↔ Fecha de compra", "Pedidos", "Una fecha tiene muchos pedidos"],
+    ["Estados", "8 estados", "Estado del pedido", "Pedidos", "Un estado agrupa muchos pedidos (ej. Entregado: 96.211)"],
+    ["Rangos", "6 rangos", "Rango de retraso", "Pedidos", "Un rango agrupa muchos pedidos (ej. A tiempo: 89.672)"],
+], [3.0, 1.8, 3.8, 3.4, 5.0])
+P("Además hay dos tablas desconectadas: <b>Indicadores</b> (los 14 indicadores del BSC con meta y tolerancia) y "
+  "<b>Etapas</b> (para el embudo), y la tabla <b>Medidas</b> con 41 medidas DAX.")
+
+P("4. Metodología: Balanced Scorecard", h1)
+P("El BSC traduce la estrategia en indicadores equilibrados en cuatro perspectivas unidas por un <b>mapa estratégico</b> "
+  "de causa y efecto: con datos confiables y más capacidad (<i>aprendizaje</i>) se agilizan la aprobación, la preparación y "
+  "el transporte (<i>procesos</i>); así se cumple la fecha prometida (<i>clientes</i>) y crecen los pedidos completados con "
+  "menos pérdidas (<i>financiera</i>). Cada indicador tiene una meta y una tolerancia: <b>verde</b> si cumple la meta, "
+  "<b>amarillo</b> si está dentro de la tolerancia y <b>rojo</b> si está fuera.")
+tabla([
+    ["Perspectiva", "Indicador", "Meta", "Valor esperado", "Semáforo"],
+    ["Financiera", "1.1 Crecimiento interanual de pedidos (2018 vs 2017, ene-ago)", "≥ 20 %", "+135,1 %", "Verde"],
+    ["Financiera", "1.2 % de pedidos entregados", "≥ 97 %", "97,1 %", "Verde"],
+    ["Financiera", "1.3 % de pedidos perdidos (cancelados o no disponibles)", "≤ 1 %", "1,19 %", "Amarillo"],
+    ["Clientes", "2.1 % de entregas a tiempo", "≥ 95 %", "93,2 %", "Amarillo"],
+    ["Clientes", "2.2 Días promedio de retraso", "≤ 7 días", "10,6 días", "Rojo"],
+    ["Clientes", "2.3 % de retrasos mayores a 7 días", "≤ 2 %", "2,97 %", "Amarillo"],
+    ["Clientes", "2.4 Días de anticipación frente a la fecha prometida", "≥ 10 días", "11,8 días", "Verde"],
+    ["Procesos internos", "3.1 Días promedio de ciclo", "≤ 10 días", "12,5 días", "Rojo"],
+    ["Procesos internos", "3.2 Horas promedio de aprobación", "≤ 12 h", "10,3 h", "Verde"],
+    ["Procesos internos", "3.3 Días promedio de preparación", "≤ 3 días", "2,8 días", "Verde"],
+    ["Procesos internos", "3.4 Días promedio de transporte", "≤ 8 días", "9,3 días", "Amarillo"],
+    ["Aprendizaje", "4.1 % de registros consistentes", "≥ 99 %", "98,6 %", "Amarillo"],
+    ["Aprendizaje", "4.2 Pedidos procesados por día", "≥ 150", "163", "Verde"],
+    ["Aprendizaje", "4.3 Mejora del % a tiempo vs año anterior", "≥ 0 pp", "−4,2 pp", "Rojo"],
+], [2.6, 7.6, 1.8, 2.4, 1.8])
+P("Resultado esperado del cuadro de mando: <b>6 indicadores en verde, 5 en amarillo y 3 en rojo</b>; cumplimiento global "
+  "del 60,7 % (financiera 83 %, procesos 63 %, clientes 50 %, aprendizaje 50 %). Conclusión: el negocio crece, pero el "
+  "transporte es el cuello de botella que afecta la puntualidad, y en 2018 la puntualidad empeoró frente a 2017.")
+
+P("5. Páginas del tablero", h1)
+tabla([
+    ["Página", "Contenido"],
+    ["0. Cuadro de mando BSC", "Cumplimiento global, conteo verde/amarillo/rojo, tabla de los 14 indicadores con meta, valor y "
+     "semáforo, cumplimiento por perspectiva y mapa estratégico"],
+    ["1. Perspectiva financiera", "Pedidos, crecimiento interanual, % entregados y % perdidos; comparación mensual 2017 vs 2018; "
+     "pedidos por fase; % perdidos por mes"],
+    ["2. Perspectiva clientes", "% a tiempo con semáforo y brecha vs meta, días de retraso, retrasos > 7 días, anticipación; "
+     "tendencia vs meta; pedidos por rango de retraso; % a tiempo por día"],
+    ["3. Perspectiva procesos internos", "Tiempos de ciclo, aprobación, preparación y transporte; composición del ciclo por mes; "
+     "embudo de etapas; detalle mensual"],
+    ["4. Perspectiva aprendizaje y crecimiento", "% registros consistentes, capacidad diaria, mejora vs año anterior, "
+     "inconsistencias por regla, pedidos por estado y reglas del ETL"],
+], [4.6, 12.4])
 P("Todas las páginas tienen filtros de Año, Mes y Estado del pedido.")
 
-P("4. Indicadores (valores esperados para todo el periodo)", h1)
-P("Estos valores se calcularon con una réplica del ETL en Python (<i>fuentes/etl_pedidos_python.py</i>) y sirven para "
-  "comprobar que el tablero carga bien los datos:")
-tabla([
-    ["Indicador (medida DAX)", "Definición", "Valor esperado"],
-    ["Total Pedidos", "Pedidos del periodo después del ETL", "99.092"],
-    ["% Pedidos Entregados", "Entregados con fecha de entrega / total", "97,1 %"],
-    ["% Entregas A Tiempo", "Entregados en o antes de la fecha estimada / entregados (meta 95 %)", "93,2 % (No cumple)"],
-    ["Pedidos Con Retraso", "Entregados después de la fecha estimada", "6.531"],
-    ["Días Promedio de Retraso", "Promedio de días tarde, solo pedidos con retraso", "10,6 días"],
-    ["Horas Promedio de Aprobación", "Compra → aprobación del pago", "10,3 horas"],
-    ["Días Promedio de Preparación", "Aprobación → transportista", "2,83 días"],
-    ["Días Promedio de Transporte", "Transportista → cliente (cuello de botella)", "9,34 días"],
-    ["Días Promedio de Ciclo", "Compra → entrega al cliente", "12,5 días"],
-    ["Nivel Sigma", "NORM.S.INV(1 − tasa de defectos) + 1,5", "≈ 2,99"],
-    ["% Cancelación", "(Cancelados + No disponibles) / total", "1,19 %"],
-    ["Registros con Inconsistencias", "Pedidos que incumplen alguna regla de fechas", "1.401"],
-], [4.6, 8.4, 4.0])
-
-P("5. Cómo abrir el tablero y obtener el archivo .pbix", h1)
+P("6. Cómo abrir el tablero y guardar el .pbix", h1)
 for i, t in enumerate([
-    "Instalar o actualizar <b>Power BI Desktop</b> (Microsoft Store o microsoft.com/power-bi).",
-    "Descargar el repositorio (botón <i>Code → Download ZIP</i>) y descomprimirlo de modo que los datos queden en "
-    "<b>C:\\Trabajos\\datos\\originales\\</b>. Si se usa otra carpeta, ver el paso 4.",
-    "Abrir el archivo <b>tablero\\Tablero_Pedidos_BPM.pbip</b> con doble clic.",
-    "Si la carpeta es distinta: <i>Inicio → Transformar datos → Editar parámetros</i>, escribir la ruta de la carpeta de "
-    "los CSV en <b>RutaDatos</b> (terminada en \\) y pulsar <i>Aplicar cambios</i>.",
-    "Pulsar <b>Inicio → Actualizar</b> para cargar los datos. Comparar las tarjetas con la tabla del punto 4.",
-    "Guardar el entregable con <b>Archivo → Guardar como</b>, tipo <b>Archivo de Power BI (.pbix)</b>."], 1):
+    "Descargar <b>Tablero_BSC_Pedidos.zip</b> y descomprimirlo directamente en <b>C:\\</b>: así se crea "
+    "<b>C:\\Trabajos\\</b> con las carpetas <i>datos</i> y <i>tablero</i>.",
+    "Abrir <b>C:\\Trabajos\\tablero\\Tablero_Pedidos_BSC.pbip</b> con Power BI Desktop (versión actualizada).",
+    "Si se descomprimió en otra carpeta: <i>Inicio → Transformar datos → Editar parámetros</i>, escribir en <b>RutaDatos</b> "
+    "la carpeta donde está <i>olist_orders_dataset.csv</i> (terminada en \\) y pulsar <i>Aplicar cambios</i>.",
+    "Pulsar <b>Inicio → Actualizar</b> y comparar el cuadro de mando con la tabla del punto 4.",
+    "Guardar el entregable con <b>Archivo → Guardar como → Archivo de Power BI (.pbix)</b>."], 1):
     S.append(Paragraph(t, bul, bulletText=f"{i}."))
-P("Si Power BI Desktop no abre el .pbip, se debe activar en <i>Archivo → Opciones y configuración → Opciones → "
-  "Características en versión preliminar</i>: “Opción de guardar proyecto de Power BI (.pbip)”, “Almacenar el modelo "
-  "semántico con formato TMDL” y “Almacenar informes con formato de metadatos mejorado (PBIR)”. Después se reinicia "
-  "Power BI Desktop. En las versiones recientes estas opciones pueden venir activadas por defecto.")
+P("Si Power BI Desktop no abre el .pbip, activar en <i>Archivo → Opciones y configuración → Opciones → Características en "
+  "versión preliminar</i>: “Opción de guardar proyecto de Power BI (.pbip)”, “Almacenar el modelo semántico con formato "
+  "TMDL” y “Almacenar informes con formato de metadatos mejorado (PBIR)”, y reiniciar. En versiones recientes pueden venir "
+  "activadas.")
 
-P("Anexo – Medidas DAX principales", h1)
-S.append(Preformatted("""% Entregas A Tiempo = DIVIDE ( [Pedidos A Tiempo], [Pedidos Entregados] )
-Pedidos A Tiempo    = CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Estado de entrega] = "A tiempo" )
-Días Promedio de Ciclo = AVERAGE ( Pedidos[Días de ciclo total] )
-Estado de la Meta =
-    VAR Valor = [% Entregas A Tiempo]
-    VAR Meta = [Meta % A Tiempo]          -- 0,95
-    RETURN SWITCH ( TRUE (), ISBLANK ( Valor ), BLANK (),
-                    Valor >= Meta, "[verde] Cumple", Valor >= Meta - 0.03, "[amarillo] En riesgo", "[rojo] No cumple" )
-Nivel Sigma =
-    VAR TasaDefectos = DIVIDE ( [Pedidos Con Retraso], [Pedidos Entregados] )
-    RETURN IF ( TasaDefectos > 0 && TasaDefectos < 1, NORM.S.INV ( 1 - TasaDefectos ) + 1.5 )
-Pedidos que Alcanzan la Etapa =
-    SWITCH ( SELECTEDVALUE ( Etapas[Orden] ), 1, [Total Pedidos],
-             2, COUNT ( Pedidos[Fecha de aprobación] ), 3, COUNT ( Pedidos[Fecha entrega a transportista] ),
-             4, [Pedidos Entregados] )""", code))
-P("El código M completo de cada paso puede verse en Power Query o en "
-  
-  "<i>tablero/Tablero_Pedidos_BPM.SemanticModel/definition/tables/Pedidos.tmdl</i>.", ParagraphStyle("izq", parent=body, alignment=0))
+P("Anexo – Medidas DAX del semáforo BSC", h1)
+S.append(Preformatted("""Estado Numérico =
+    VAR Valor = [Valor Indicador]                      -- SWITCH por Indicadores[Código]
+    VAR Meta = [Meta Indicador]
+    VAR Tolerancia = SELECTEDVALUE ( Indicadores[Tolerancia] )
+    VAR MayorEsMejor = SELECTEDVALUE ( Indicadores[Sentido] ) = "Mayor es mejor"
+    RETURN IF ( NOT ISBLANK ( Valor ) && NOT ISBLANK ( Meta ),
+        IF ( MayorEsMejor,
+             IF ( Valor >= Meta, 1, IF ( Valor >= Meta - Tolerancia, 0.5, 0 ) ),
+             IF ( Valor <= Meta, 1, IF ( Valor <= Meta + Tolerancia, 0.5, 0 ) ) ) )
+Cumplimiento BSC = AVERAGEX ( VALUES ( Indicadores[Código] ), [Estado Numérico] )
+Crecimiento Interanual de Pedidos =
+    VAR UltimaFecha = CALCULATE ( MAX ( Calendario[Fecha] ), REMOVEFILTERS ( Calendario ) )
+    VAR AnioActual = IF ( HASONEVALUE ( Calendario[Año] ), VALUES ( Calendario[Año] ), YEAR ( UltimaFecha ) )
+    VAR MesFin = IF ( AnioActual = YEAR ( UltimaFecha ), MONTH ( UltimaFecha ), 12 )
+    VAR Actual = CALCULATE ( [Total Pedidos], REMOVEFILTERS ( Calendario ),
+                             Calendario[Año] = AnioActual, Calendario[Mes número] <= MesFin )
+    VAR Anterior = CALCULATE ( [Total Pedidos], REMOVEFILTERS ( Calendario ),
+                               Calendario[Año] = AnioActual - 1, Calendario[Mes número] <= MesFin )
+    RETURN DIVIDE ( Actual - Anterior, Anterior )""", code))
 
 doc = SimpleDocTemplate(sys.argv[1], pagesize=letter, leftMargin=2.1 * cm, rightMargin=2.1 * cm,
                         topMargin=1.7 * cm, bottomMargin=1.7 * cm,
-                        title="Guía del ETL y del tablero – Proceso de pedidos", author="Grupo de trabajo")
+                        title="Guía del ETL y del tablero BSC – Pedidos Olist", author="Grupo de trabajo")
 doc.build(S)

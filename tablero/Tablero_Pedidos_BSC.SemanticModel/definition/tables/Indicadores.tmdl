@@ -1,0 +1,100 @@
+/// Indicadores del Balanced Scorecard con su perspectiva, meta y tolerancia (tabla desconectada).
+table Indicadores
+
+	column 'Código'
+		dataType: string
+		isKey
+		summarizeBy: none
+		sourceColumn: Código
+
+		annotation SummarizationSetBy = Automatic
+
+	column Orden
+		dataType: int64
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Orden
+
+		annotation SummarizationSetBy = Automatic
+
+	column Perspectiva
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Perspectiva
+		sortByColumn: 'Orden perspectiva'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Orden perspectiva'
+		dataType: int64
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Orden perspectiva
+
+		annotation SummarizationSetBy = Automatic
+
+	column Indicador
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Indicador
+		sortByColumn: Orden
+
+		annotation SummarizationSetBy = Automatic
+
+	column Meta
+		dataType: double
+		formatString: 0.00
+		summarizeBy: none
+		sourceColumn: Meta
+
+		annotation SummarizationSetBy = Automatic
+
+	column Tolerancia
+		dataType: double
+		formatString: 0.00
+		summarizeBy: none
+		sourceColumn: Tolerancia
+
+		annotation SummarizationSetBy = Automatic
+
+	column Sentido
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Sentido
+
+		annotation SummarizationSetBy = Automatic
+
+	column Formato
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: Formato
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Indicadores = m
+		mode: import
+		source =
+				let
+				    // Indicadores del Balanced Scorecard: perspectiva, meta, tolerancia (zona amarilla) y sentido de mejora
+				    Indicadores = #table(type table [#"Código" = text, Orden = Int64.Type, Perspectiva = text, #"Orden perspectiva" = Int64.Type, Indicador = text, Meta = number, Tolerancia = number, Sentido = text, Formato = text], {
+				        {"1.1", 1, "Financiera", 1, "Crecimiento interanual de pedidos", 0.20, 0.05, "Mayor es mejor", "%"},
+				        {"1.2", 2, "Financiera", 1, "% de pedidos entregados (ventas completadas)", 0.97, 0.01, "Mayor es mejor", "%"},
+				        {"1.3", 3, "Financiera", 1, "% de pedidos perdidos (cancelados o no disponibles)", 0.01, 0.005, "Menor es mejor", "%"},
+				        {"2.1", 4, "Clientes", 2, "% de entregas a tiempo", 0.95, 0.03, "Mayor es mejor", "%"},
+				        {"2.2", 5, "Clientes", 2, "Días promedio de retraso", 7, 2, "Menor es mejor", "días"},
+				        {"2.3", 6, "Clientes", 2, "% de retrasos mayores a 7 días", 0.02, 0.01, "Menor es mejor", "%"},
+				        {"2.4", 7, "Clientes", 2, "Días de anticipación frente a la fecha prometida", 10, 2, "Mayor es mejor", "días"},
+				        {"3.1", 8, "Procesos internos", 3, "Días promedio de ciclo (compra a entrega)", 10, 2, "Menor es mejor", "días"},
+				        {"3.2", 9, "Procesos internos", 3, "Horas promedio de aprobación del pago", 12, 4, "Menor es mejor", "horas"},
+				        {"3.3", 10, "Procesos internos", 3, "Días promedio de preparación", 3, 1, "Menor es mejor", "días"},
+				        {"3.4", 11, "Procesos internos", 3, "Días promedio de transporte", 8, 2, "Menor es mejor", "días"},
+				        {"4.1", 12, "Aprendizaje y crecimiento", 4, "% de registros consistentes (calidad de datos)", 0.99, 0.01, "Mayor es mejor", "%"},
+				        {"4.2", 13, "Aprendizaje y crecimiento", 4, "Pedidos procesados por día (capacidad)", 150, 20, "Mayor es mejor", "num"},
+				        {"4.3", 14, "Aprendizaje y crecimiento", 4, "Mejora del % a tiempo frente al año anterior", 0, 0.02, "Mayor es mejor", "pp"}})
+				in
+				    Indicadores
+
+	annotation PBI_ResultType = Table

@@ -1,0 +1,53 @@
+/// Dimensión de estados del pedido: un estado se relaciona con muchos pedidos (1 a *).
+table Estados
+
+	column 'Estado del pedido'
+		dataType: string
+		isKey
+		summarizeBy: none
+		sourceColumn: Estado del pedido
+		sortByColumn: Orden
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Código original'
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Código original
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Fase del proceso'
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Fase del proceso
+
+		annotation SummarizationSetBy = Automatic
+
+	column Orden
+		dataType: int64
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Orden
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Estados = m
+		mode: import
+		source =
+				let
+				    // Dimensión de estados: cada estado agrupa muchos pedidos (relación uno a muchos)
+				    Estados = #table(type table [#"Estado del pedido" = text, #"Código original" = text, #"Fase del proceso" = text, Orden = Int64.Type], {
+				        {"Creado", "created", "En curso", 1},
+				        {"Aprobado", "approved", "En curso", 2},
+				        {"Facturado", "invoiced", "En curso", 3},
+				        {"En proceso", "processing", "En curso", 4},
+				        {"Enviado", "shipped", "En curso", 5},
+				        {"Entregado", "delivered", "Completado", 6},
+				        {"Cancelado", "canceled", "Perdido", 7},
+				        {"No disponible", "unavailable", "Perdido", 8}})
+				in
+				    Estados
+
+	annotation PBI_ResultType = Table

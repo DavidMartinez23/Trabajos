@@ -1,0 +1,64 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.5.0/schema.json",
+  "name": "9521a5ef796539d9dfe0",
+  "position": {
+    "x": 16,
+    "y": 10,
+    "z": 0,
+    "height": 70,
+    "width": 620,
+    "tabOrder": 0
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Perspectiva de clientes",
+                    "textStyle": {
+                      "fontSize": "20pt",
+                      "color": "#1F4E79",
+                      "fontFamily": "Segoe (Bold)"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Objetivo: cumplir la promesa de entrega · meta 95 % de pedidos a tiempo",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "color": "#5D6D7E"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

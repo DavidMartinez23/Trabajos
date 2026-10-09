@@ -1,0 +1,11 @@
+relationship 440da2ca-a21f-ec4d-55a7-c10fa4422848
+	fromColumn: Pedidos.'Fecha de compra'
+	toColumn: Calendario.Fecha
+
+relationship 09c5080f-a3f5-3b8d-59a9-4d2a18e2a5dd
+	fromColumn: Pedidos.'Estado del pedido'
+	toColumn: Estados.'Estado del pedido'
+
+relationship f3fdfd86-0493-f626-ec1c-b49bcfc545c2
+	fromColumn: Pedidos.'Rango de retraso'
+	toColumn: Rangos.'Rango de retraso'

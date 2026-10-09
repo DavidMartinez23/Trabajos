@@ -1,0 +1,44 @@
+/// Dimensión de rangos de retraso: un rango se relaciona con muchos pedidos (1 a *).
+table Rangos
+
+	column Orden
+		dataType: int64
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: Orden
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Rango de retraso'
+		dataType: string
+		isKey
+		summarizeBy: none
+		sourceColumn: Rango de retraso
+		sortByColumn: Orden
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Tipo de entrega'
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Tipo de entrega
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Rangos = m
+		mode: import
+		source =
+				let
+				    // Dimensión de rangos de retraso: cada rango agrupa muchos pedidos (relación uno a muchos)
+				    Rangos = #table(type table [Orden = Int64.Type, #"Rango de retraso" = text, #"Tipo de entrega" = text], {
+				        {1, "A tiempo", "A tiempo"},
+				        {2, "1 a 3 días", "Con retraso"},
+				        {3, "4 a 7 días", "Con retraso"},
+				        {4, "8 a 14 días", "Con retraso"},
+				        {5, "Más de 14 días", "Con retraso"},
+				        {6, "No entregado", "No entregado"}})
+				in
+				    Rangos
+
+	annotation PBI_ResultType = Table

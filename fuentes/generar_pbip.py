@@ -1,4 +1,4 @@
-"""Genera el proyecto de Power BI (PBIP: modelo TMDL + reporte PBIR) del tablero de pedidos.
+"""Genera el proyecto de Power BI (PBIP: modelo TMDL + reporte PBIR) del tablero Balanced Scorecard de pedidos.
 
 Uso: python generar_pbip.py <carpeta_destino>
 """
@@ -9,7 +9,7 @@ import sys
 import uuid
 from pathlib import Path
 
-NOMBRE = "Tablero_Pedidos_BPM"
+NOMBRE = "Tablero_Pedidos_BSC"
 RUTA_DATOS_DEFECTO = "C:\\Trabajos\\datos\\originales\\"
 AQUI = Path(__file__).resolve().parent
 
@@ -80,10 +80,8 @@ let
         else if [days_vs_estimate] <= 7 then "4 a 7 días"
         else if [days_vs_estimate] <= 14 then "8 a 14 días"
         else "Más de 14 días", type text),
-    OrdenRangos = [#"A tiempo" = 1, #"1 a 3 días" = 2, #"4 a 7 días" = 3, #"8 a 14 días" = 4, #"Más de 14 días" = 5, #"No entregado" = 6],
-    #"Agregado orden del rango" = Table.AddColumn(#"Agregado rango de retraso", "delay_range_order", each Record.Field(OrdenRangos, [delay_range]), Int64.Type),
     // Validación de consistencia de las fechas del proceso (se marca la primera regla que se incumple)
-    #"Agregada calidad del registro" = Table.AddColumn(#"Agregado orden del rango", "record_quality", each
+    #"Agregada calidad del registro" = Table.AddColumn(#"Agregado rango de retraso", "record_quality", each
         if [order_status] = "Entregado" and [order_delivered_customer_date] = null then "Entregado sin fecha de entrega"
         else if [order_status] = "Cancelado" and [order_delivered_customer_date] <> null then "Cancelado con fecha de entrega"
         else if [order_delivered_carrier_date] <> null and [order_delivered_carrier_date] < [order_purchase_timestamp] then "Transportista antes de la compra"
@@ -99,9 +97,18 @@ let
         {"order_estimated_delivery_date", "Fecha estimada de entrega"}, {"purchase_date", "Fecha de compra"}, {"purchase_hour", "Hora de compra"},
         {"approval_hours", "Horas de aprobación"}, {"prep_days", "Días de preparación"}, {"transit_days", "Días de transporte"},
         {"cycle_days", "Días de ciclo total"}, {"days_vs_estimate", "Días vs estimado"}, {"delivery_status", "Estado de entrega"},
-        {"delay_range", "Rango de retraso"}, {"delay_range_order", "Orden rango de retraso"}, {"record_quality", "Calidad del registro"}})
+        {"delay_range", "Rango de retraso"}, {"record_quality", "Calidad del registro"}}),
+    // Revisión final del formato de cada columna: texto, fecha/hora, fecha, entero o decimal
+    #"Tipos verificados por columna" = Table.TransformColumnTypes(#"Columnas renombradas", {
+        {"ID Pedido", type text}, {"ID Cliente", type text}, {"Estado del pedido", type text},
+        {"Fecha y hora de compra", type datetime}, {"Fecha de aprobación", type datetime},
+        {"Fecha entrega a transportista", type datetime}, {"Fecha entrega al cliente", type datetime},
+        {"Fecha estimada de entrega", type date}, {"Fecha de compra", type date}, {"Hora de compra", Int64.Type},
+        {"Horas de aprobación", type number}, {"Días de preparación", type number}, {"Días de transporte", type number},
+        {"Días de ciclo total", type number}, {"Días vs estimado", Int64.Type}, {"Estado de entrega", type text},
+        {"Rango de retraso", type text}, {"Calidad del registro", type text}})
 in
-    #"Columnas renombradas"
+    #"Tipos verificados por columna"
 '''
 
 M_CALENDARIO = r'''
@@ -126,7 +133,7 @@ in
 
 M_ETAPAS = r'''
 let
-    // Etapas del proceso de pedido (modelo BPM) para el embudo
+    // Etapas del proceso de pedido para el embudo de la perspectiva de procesos internos
     Etapas = #table(type table [Orden = Int64.Type, Etapa = text], {
         {1, "1. Compra registrada"},
         {2, "2. Pago aprobado"},
@@ -136,16 +143,93 @@ in
     Etapas
 '''
 
+M_ESTADOS = r'''
+let
+    // Dimensión de estados: cada estado agrupa muchos pedidos (relación uno a muchos)
+    Estados = #table(type table [#"Estado del pedido" = text, #"Código original" = text, #"Fase del proceso" = text, Orden = Int64.Type], {
+        {"Creado", "created", "En curso", 1},
+        {"Aprobado", "approved", "En curso", 2},
+        {"Facturado", "invoiced", "En curso", 3},
+        {"En proceso", "processing", "En curso", 4},
+        {"Enviado", "shipped", "En curso", 5},
+        {"Entregado", "delivered", "Completado", 6},
+        {"Cancelado", "canceled", "Perdido", 7},
+        {"No disponible", "unavailable", "Perdido", 8}})
+in
+    Estados
+'''
+
+M_RANGOS = r'''
+let
+    // Dimensión de rangos de retraso: cada rango agrupa muchos pedidos (relación uno a muchos)
+    Rangos = #table(type table [Orden = Int64.Type, #"Rango de retraso" = text, #"Tipo de entrega" = text], {
+        {1, "A tiempo", "A tiempo"},
+        {2, "1 a 3 días", "Con retraso"},
+        {3, "4 a 7 días", "Con retraso"},
+        {4, "8 a 14 días", "Con retraso"},
+        {5, "Más de 14 días", "Con retraso"},
+        {6, "No entregado", "No entregado"}})
+in
+    Rangos
+'''
+
+M_INDICADORES = r'''
+let
+    // Indicadores del Balanced Scorecard: perspectiva, meta, tolerancia (zona amarilla) y sentido de mejora
+    Indicadores = #table(type table [#"Código" = text, Orden = Int64.Type, Perspectiva = text, #"Orden perspectiva" = Int64.Type, Indicador = text, Meta = number, Tolerancia = number, Sentido = text, Formato = text], {
+        {"1.1", 1, "Financiera", 1, "Crecimiento interanual de pedidos", 0.20, 0.05, "Mayor es mejor", "%"},
+        {"1.2", 2, "Financiera", 1, "% de pedidos entregados (ventas completadas)", 0.97, 0.01, "Mayor es mejor", "%"},
+        {"1.3", 3, "Financiera", 1, "% de pedidos perdidos (cancelados o no disponibles)", 0.01, 0.005, "Menor es mejor", "%"},
+        {"2.1", 4, "Clientes", 2, "% de entregas a tiempo", 0.95, 0.03, "Mayor es mejor", "%"},
+        {"2.2", 5, "Clientes", 2, "Días promedio de retraso", 7, 2, "Menor es mejor", "días"},
+        {"2.3", 6, "Clientes", 2, "% de retrasos mayores a 7 días", 0.02, 0.01, "Menor es mejor", "%"},
+        {"2.4", 7, "Clientes", 2, "Días de anticipación frente a la fecha prometida", 10, 2, "Mayor es mejor", "días"},
+        {"3.1", 8, "Procesos internos", 3, "Días promedio de ciclo (compra a entrega)", 10, 2, "Menor es mejor", "días"},
+        {"3.2", 9, "Procesos internos", 3, "Horas promedio de aprobación del pago", 12, 4, "Menor es mejor", "horas"},
+        {"3.3", 10, "Procesos internos", 3, "Días promedio de preparación", 3, 1, "Menor es mejor", "días"},
+        {"3.4", 11, "Procesos internos", 3, "Días promedio de transporte", 8, 2, "Menor es mejor", "días"},
+        {"4.1", 12, "Aprendizaje y crecimiento", 4, "% de registros consistentes (calidad de datos)", 0.99, 0.01, "Mayor es mejor", "%"},
+        {"4.2", 13, "Aprendizaje y crecimiento", 4, "Pedidos procesados por día (capacidad)", 150, 20, "Mayor es mejor", "num"},
+        {"4.3", 14, "Aprendizaje y crecimiento", 4, "Mejora del % a tiempo frente al año anterior", 0, 0.02, "Mayor es mejor", "pp"}})
+in
+    Indicadores
+'''
+
+COLS_ESTADOS = [
+    ("Estado del pedido", "string", None, {"sortByColumn": "Orden", "isKey": True}),
+    ("Código original", "string", None, {}),
+    ("Fase del proceso", "string", None, {}),
+    ("Orden", "int64", "0", {"isHidden": True}),
+]
+
+COLS_RANGOS = [
+    ("Orden", "int64", "0", {"isHidden": True}),
+    ("Rango de retraso", "string", None, {"sortByColumn": "Orden", "isKey": True}),
+    ("Tipo de entrega", "string", None, {}),
+]
+
+COLS_INDICADORES = [
+    ("Código", "string", None, {"isKey": True}),
+    ("Orden", "int64", "0", {"isHidden": True}),
+    ("Perspectiva", "string", None, {"sortByColumn": "Orden perspectiva"}),
+    ("Orden perspectiva", "int64", "0", {"isHidden": True}),
+    ("Indicador", "string", None, {"sortByColumn": "Orden"}),
+    ("Meta", "double", "0.00", {}),
+    ("Tolerancia", "double", "0.00", {}),
+    ("Sentido", "string", None, {}),
+    ("Formato", "string", None, {"isHidden": True}),
+]
+
 # (nombre, tipo, formato, extra) - extra: dict con isHidden / sortByColumn / isKey / summarizeBy
 COLS_PEDIDOS = [
     ("ID Pedido", "string", None, {}),
     ("ID Cliente", "string", None, {"isHidden": True}),
-    ("Estado del pedido", "string", None, {}),
+    ("Estado del pedido", "string", None, {"isHidden": True}),
     ("Fecha y hora de compra", "dateTime", "dd/mm/yyyy hh:nn", {}),
     ("Fecha de aprobación", "dateTime", "dd/mm/yyyy hh:nn", {}),
     ("Fecha entrega a transportista", "dateTime", "dd/mm/yyyy hh:nn", {}),
     ("Fecha entrega al cliente", "dateTime", "dd/mm/yyyy hh:nn", {}),
-    ("Fecha estimada de entrega", "dateTime", "dd/mm/yyyy", {}),
+    ("Fecha estimada de entrega", "dateTime", "dd/mm/yyyy", {"date": True}),
     ("Fecha de compra", "dateTime", "dd/mm/yyyy", {"date": True}),
     ("Hora de compra", "int64", "0", {}),
     ("Horas de aprobación", "double", "0.00", {}),
@@ -154,8 +238,7 @@ COLS_PEDIDOS = [
     ("Días de ciclo total", "double", "0.00", {}),
     ("Días vs estimado", "int64", "0", {}),
     ("Estado de entrega", "string", None, {}),
-    ("Rango de retraso", "string", None, {"sortByColumn": "Orden rango de retraso"}),
-    ("Orden rango de retraso", "int64", "0", {"isHidden": True}),
+    ("Rango de retraso", "string", None, {"isHidden": True}),
     ("Calidad del registro", "string", None, {}),
 ]
 
@@ -237,17 +320,17 @@ RETURN
     )
 """),
     ("Pedidos Cancelados o No Disponibles", "#,0", "Pedidos que no se completaron por cancelación o falta de producto.",
-     'CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Estado del pedido] IN { "Cancelado", "No disponible" } )'),
-    ("% Cancelación", "0.00%", "Proporción de pedidos cancelados o no disponibles.",
+     'CALCULATE ( COUNTROWS ( Pedidos ), Estados[Fase del proceso] = "Perdido" )'),
+    ("% Pedidos Perdidos", "0.00%", "Proporción de pedidos cancelados o no disponibles.",
      "DIVIDE ( [Pedidos Cancelados o No Disponibles], [Total Pedidos] )"),
     ("Pedidos en Curso", "#,0", "Pedidos que aún no terminan el proceso (creados, aprobados, en proceso, facturados o enviados).",
-     'CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Estado del pedido] IN { "Creado", "Aprobado", "En proceso", "Facturado", "Enviado" } )'),
+     'CALCULATE ( COUNTROWS ( Pedidos ), Estados[Fase del proceso] = "En curso" )'),
     ("Registros con Inconsistencias", "#,0", "Pedidos con fechas del proceso que no son coherentes (detectados en el ETL).",
      'CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Calidad del registro] <> "Sin inconsistencias" )'),
     ("% Registros con Inconsistencias", "0.00%", "Proporción de registros con fechas inconsistentes.",
      "DIVIDE ( [Registros con Inconsistencias], [Total Pedidos] )"),
     ("% del Total de Pedidos", "0.00%", "Participación de cada estado del pedido sobre el total.",
-     "DIVIDE ( [Total Pedidos], CALCULATE ( [Total Pedidos], ALL ( Pedidos[Estado del pedido] ) ) )"),
+     "DIVIDE ( [Total Pedidos], CALCULATE ( [Total Pedidos], ALL ( Estados ) ) )"),
     ("Pedidos que Alcanzan la Etapa", "#,0", "Pedidos que llegaron al menos a cada etapa del proceso (embudo).",
      """
 SWITCH (
@@ -260,6 +343,120 @@ SWITCH (
 """),
     ("% Avance del Proceso", "0.0%", "Proporción de pedidos que alcanzan cada etapa respecto al total.",
      "DIVIDE ( [Pedidos que Alcanzan la Etapa], [Total Pedidos] )"),
+    ("% Retrasos Mayores a 7 Días", "0.00%", "Pedidos entregados con más de 7 días de retraso sobre el total entregado.",
+     "DIVIDE ( CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Días vs estimado] > 7 ), [Pedidos Entregados] )"),
+    ("% Registros Consistentes", "0.00%", "Pedidos cuyas fechas cumplen todas las reglas de calidad.",
+     'DIVIDE ( CALCULATE ( COUNTROWS ( Pedidos ), Pedidos[Calidad del registro] = "Sin inconsistencias" ), [Total Pedidos] )'),
+    ("Pedidos Promedio por Día", "#,0.0", "Capacidad operativa: pedidos por día calendario del periodo.",
+     "DIVIDE ( [Total Pedidos], COUNTROWS ( Calendario ) )"),
+    ("Crecimiento Interanual de Pedidos", "+0.0%;-0.0%;0.0%", "Pedidos del año frente a los mismos meses del año anterior (por defecto 2018 vs 2017, enero-agosto).",
+     """
+VAR UltimaFecha = CALCULATE ( MAX ( Calendario[Fecha] ), REMOVEFILTERS ( Calendario ) )
+VAR AnioActual = IF ( HASONEVALUE ( Calendario[Año] ), VALUES ( Calendario[Año] ), YEAR ( UltimaFecha ) )
+VAR MesFin = IF ( AnioActual = YEAR ( UltimaFecha ), MONTH ( UltimaFecha ), 12 )
+VAR Actual = CALCULATE ( [Total Pedidos], REMOVEFILTERS ( Calendario ), Calendario[Año] = AnioActual, Calendario[Mes número] <= MesFin )
+VAR Anterior = CALCULATE ( [Total Pedidos], REMOVEFILTERS ( Calendario ), Calendario[Año] = AnioActual - 1, Calendario[Mes número] <= MesFin )
+RETURN
+    DIVIDE ( Actual - Anterior, Anterior )
+"""),
+    ("Mejora A Tiempo vs Año Anterior", "+0.0%;-0.0%;0.0%", "Puntos porcentuales de mejora del % a tiempo frente a los mismos meses del año anterior.",
+     """
+VAR UltimaFecha = CALCULATE ( MAX ( Calendario[Fecha] ), REMOVEFILTERS ( Calendario ) )
+VAR AnioActual = IF ( HASONEVALUE ( Calendario[Año] ), VALUES ( Calendario[Año] ), YEAR ( UltimaFecha ) )
+VAR MesFin = IF ( AnioActual = YEAR ( UltimaFecha ), MONTH ( UltimaFecha ), 12 )
+VAR Actual = CALCULATE ( [% Entregas A Tiempo], REMOVEFILTERS ( Calendario ), Calendario[Año] = AnioActual, Calendario[Mes número] <= MesFin )
+VAR Anterior = CALCULATE ( [% Entregas A Tiempo], REMOVEFILTERS ( Calendario ), Calendario[Año] = AnioActual - 1, Calendario[Mes número] <= MesFin )
+RETURN
+    IF ( NOT ISBLANK ( Actual ) && NOT ISBLANK ( Anterior ), Actual - Anterior )
+"""),
+    ("Valor Indicador", "0.00", "Valor actual del indicador BSC seleccionado.",
+     """
+SWITCH (
+    SELECTEDVALUE ( Indicadores[Código] ),
+    "1.1", [Crecimiento Interanual de Pedidos],
+    "1.2", [% Pedidos Entregados],
+    "1.3", [% Pedidos Perdidos],
+    "2.1", [% Entregas A Tiempo],
+    "2.2", [Días Promedio de Retraso],
+    "2.3", [% Retrasos Mayores a 7 Días],
+    "2.4", [Días de Holgura Promedio],
+    "3.1", [Días Promedio de Ciclo],
+    "3.2", [Horas Promedio de Aprobación],
+    "3.3", [Días Promedio de Preparación],
+    "3.4", [Días Promedio de Transporte],
+    "4.1", [% Registros Consistentes],
+    "4.2", [Pedidos Promedio por Día],
+    "4.3", [Mejora A Tiempo vs Año Anterior]
+)
+"""),
+    ("Meta Indicador", "0.00", "Meta definida para el indicador BSC seleccionado.",
+     "SELECTEDVALUE ( Indicadores[Meta] )"),
+    ("Estado Numérico", "0.0", "1 = cumple, 0,5 = en riesgo (dentro de la tolerancia), 0 = no cumple.",
+     """
+VAR Valor = [Valor Indicador]
+VAR Meta = [Meta Indicador]
+VAR Tolerancia = SELECTEDVALUE ( Indicadores[Tolerancia] )
+VAR MayorEsMejor = SELECTEDVALUE ( Indicadores[Sentido] ) = "Mayor es mejor"
+RETURN
+    IF (
+        NOT ISBLANK ( Valor ) && NOT ISBLANK ( Meta ),
+        IF (
+            MayorEsMejor,
+            IF ( Valor >= Meta, 1, IF ( Valor >= Meta - Tolerancia, 0.5, 0 ) ),
+            IF ( Valor <= Meta, 1, IF ( Valor <= Meta + Tolerancia, 0.5, 0 ) )
+        )
+    )
+"""),
+    ("Semáforo", None, "Semáforo del indicador BSC.",
+     """
+VAR E = [Estado Numérico]
+RETURN
+    IF ( NOT ISBLANK ( E ), IF ( E = 1, "🟢 Cumple", IF ( E = 0.5, "🟡 En riesgo", "🔴 No cumple" ) ) )
+"""),
+    ("Valor Actual", None, "Valor del indicador con su formato (%, días, horas, pp o número).",
+     """
+VAR Valor = [Valor Indicador]
+VAR Formato = SELECTEDVALUE ( Indicadores[Formato] )
+RETURN
+    IF (
+        NOT ISBLANK ( Valor ),
+        SWITCH (
+            Formato,
+            "%", FORMAT ( Valor, "0.0%" ),
+            "días", FORMAT ( Valor, "0.0" ) & " días",
+            "horas", FORMAT ( Valor, "0.0" ) & " h",
+            "pp", FORMAT ( Valor * 100, "+0.0;-0.0;0.0" ) & " pp",
+            FORMAT ( Valor, "#,0" )
+        )
+    )
+"""),
+    ("Meta Objetivo", None, "Meta del indicador con su formato y sentido (≥ o ≤).",
+     """
+VAR Meta = [Meta Indicador]
+VAR Formato = SELECTEDVALUE ( Indicadores[Formato] )
+VAR Signo = IF ( SELECTEDVALUE ( Indicadores[Sentido] ) = "Mayor es mejor", "≥ ", "≤ " )
+RETURN
+    IF (
+        NOT ISBLANK ( Meta ),
+        Signo
+            & SWITCH (
+                Formato,
+                "%", FORMAT ( Meta, "0.0%" ),
+                "días", FORMAT ( Meta, "0" ) & " días",
+                "horas", FORMAT ( Meta, "0" ) & " h",
+                "pp", FORMAT ( Meta * 100, "0.0" ) & " pp",
+                FORMAT ( Meta, "#,0" )
+            )
+    )
+"""),
+    ("Cumplimiento BSC", "0.0%", "Promedio del estado de los indicadores (verde = 100 %, amarillo = 50 %, rojo = 0 %).",
+     "AVERAGEX ( VALUES ( Indicadores[Código] ), [Estado Numérico] )"),
+    ("Indicadores en Verde", "0", "Cantidad de indicadores que cumplen la meta.",
+     "COUNTROWS ( FILTER ( VALUES ( Indicadores[Código] ), [Estado Numérico] = 1 ) ) + 0"),
+    ("Indicadores en Amarillo", "0", "Cantidad de indicadores en riesgo (dentro de la tolerancia).",
+     "COUNTROWS ( FILTER ( VALUES ( Indicadores[Código] ), [Estado Numérico] = 0.5 ) ) + 0"),
+    ("Indicadores en Rojo", "0", "Cantidad de indicadores que no cumplen la meta.",
+     "COUNTROWS ( FILTER ( VALUES ( Indicadores[Código] ), NOT ISBLANK ( [Estado Numérico] ) && [Estado Numérico] = 0 ) ) + 0"),
 ]
 
 
@@ -365,10 +562,13 @@ def generar_modelo(base):
         "",
         "annotation __PBI_TimeIntelligenceEnabled = 0",
         "",
-        'annotation PBI_QueryOrder = ["RutaDatos","Pedidos","Calendario","Etapas"]',
+        'annotation PBI_QueryOrder = ["RutaDatos","Pedidos","Calendario","Estados","Rangos","Indicadores","Etapas"]',
         "",
         "ref table Pedidos",
         "ref table Calendario",
+        "ref table Estados",
+        "ref table Rangos",
+        "ref table Indicadores",
         "ref table Etapas",
         "ref table Medidas",
         "",
@@ -385,14 +585,31 @@ def generar_modelo(base):
         "\tfromColumn: Pedidos.'Fecha de compra'",
         "\ttoColumn: Calendario.Fecha",
         "",
+        f"relationship {guid(NOMBRE, 'rel-pedidos-estados')}",
+        "\tfromColumn: Pedidos.'Estado del pedido'",
+        "\ttoColumn: Estados.'Estado del pedido'",
+        "",
+        f"relationship {guid(NOMBRE, 'rel-pedidos-rangos')}",
+        "\tfromColumn: Pedidos.'Rango de retraso'",
+        "\ttoColumn: Rangos.'Rango de retraso'",
+        "",
     ]))
     t = d / "tables"
     escribir(t / "Pedidos.tmdl", tmdl_tabla(
         "Pedidos", COLS_PEDIDOS, M_PEDIDOS,
-        "Tabla de hechos: un registro por pedido, con tiempos por etapa del proceso y validaciones de calidad."))
+        "Tabla de hechos: un registro por pedido (lado muchos de las relaciones con Calendario, Estados y Rangos)."))
     escribir(t / "Calendario.tmdl", tmdl_tabla(
         "Calendario", COLS_CALENDARIO, M_CALENDARIO,
         "Dimensión de fechas (enero 2017 - agosto 2018).", data_category="Time"))
+    escribir(t / "Estados.tmdl", tmdl_tabla(
+        "Estados", COLS_ESTADOS, M_ESTADOS,
+        "Dimensión de estados del pedido: un estado se relaciona con muchos pedidos (1 a *)."))
+    escribir(t / "Rangos.tmdl", tmdl_tabla(
+        "Rangos", COLS_RANGOS, M_RANGOS,
+        "Dimensión de rangos de retraso: un rango se relaciona con muchos pedidos (1 a *)."))
+    escribir(t / "Indicadores.tmdl", tmdl_tabla(
+        "Indicadores", COLS_INDICADORES, M_INDICADORES,
+        "Indicadores del Balanced Scorecard con su perspectiva, meta y tolerancia (tabla desconectada)."))
     escribir(t / "Etapas.tmdl", tmdl_tabla(
         "Etapas", COLS_ETAPAS, M_ETAPAS,
         "Etapas del proceso de pedido usadas en el embudo (tabla desconectada)."))
@@ -508,8 +725,10 @@ def v_tarjetas(medidas, columnas=None):
     }
 
 
-def v_grafico(tipo, categoria, medidas, sort=None, etiquetas=True, leyenda=None):
+def v_grafico(tipo, categoria, medidas, sort=None, etiquetas=True, leyenda=None, serie=None):
     qs = {"Category": {"projections": [col(*categoria)]}, "Y": {"projections": [med(m) for m in medidas]}}
+    if serie:
+        qs["Series"] = {"projections": [col(*serie)]}
     objetos = {"labels": [{"properties": {"show": lit("true" if etiquetas else "false")}}]}
     if tipo != "donutChart" and tipo != "funnel":
         objetos["categoryAxis"] = [{"properties": {"showAxisTitle": lit("false")}}]
@@ -538,7 +757,11 @@ def encabezado(p, titulo, subtitulo):
         [(subtitulo, 10, False, GRIS)]]), borde=False)
     p.agregar("f_anio", 652, 6, 196, 80, v_slicer("Calendario", "Año"))
     p.agregar("f_mes", 860, 6, 196, 80, v_slicer("Calendario", "Mes"))
-    p.agregar("f_estado", 1068, 6, 196, 80, v_slicer("Pedidos", "Estado del pedido"))
+    p.agregar("f_estado", 1068, 6, 196, 80, v_slicer("Estados", "Estado del pedido"))
+
+
+def parrafos(titulo, lineas, size=10):
+    return v_texto([[(titulo, 13, True, AZUL)]] + [[(l, size, l.startswith("Hallazgo"), "#1B2631")] for l in lineas])
 
 
 def construir_paginas():
@@ -546,60 +769,56 @@ def construir_paginas():
     ORDEN_MES = ("Column", "Calendario", "Mes y año")
     paginas = []
 
-    p = Pagina("resumen", "1. Resumen del proceso")
-    encabezado(p, "Proceso de pedidos: visión general",
-               "Metodología BPM - fase de monitoreo del proceso compra → aprobación → transportista → cliente")
+    p = Pagina("mapa", "0. Cuadro de mando BSC")
+    encabezado(p, "Balanced Scorecard – Proceso de pedidos Olist",
+               "14 indicadores en 4 perspectivas con meta y semáforo · enero 2017 – agosto 2018")
     p.agregar("kpis", 16, 92, 1248, 100, v_tarjetas(
-        ["Total Pedidos", "% Pedidos Entregados", "% Entregas A Tiempo", "Días Promedio de Ciclo"]))
-    p.agregar("embudo", 16, 204, 400, 248, v_grafico(
-        "funnel", ("Etapas", "Etapa"), ["Pedidos que Alcanzan la Etapa"], sort=("Column", "Etapas", "Etapa")),
-        titulo="Embudo del proceso: pedidos que alcanzan cada etapa")
-    p.agregar("pedidos_mes", 428, 204, 836, 248, v_grafico(
-        "clusteredColumnChart", MES, ["Total Pedidos"], sort=ORDEN_MES),
-        titulo="Volumen de pedidos por mes")
-    p.agregar("estados", 16, 464, 400, 248, v_grafico(
-        "donutChart", ("Pedidos", "Estado del pedido"), ["Total Pedidos"], sort=("Measure", "Medidas", "Total Pedidos", "Descending"),
-        etiquetas=True, leyenda=True), titulo="Pedidos por estado")
-    p.agregar("lectura", 428, 464, 836, 248, v_texto([
-        [("¿Qué nos dice el proceso? (enero 2017 - agosto 2018)", 13, True, AZUL)],
-        [("• 99.092 pedidos analizados; el 97,1 % llegó al cliente y solo el 1,2 % se canceló o no tuvo producto disponible.", 11, False, "#1B2631")],
-        [("• El ciclo completo dura en promedio 12,5 días: la etapa de transporte (9,3 días) es el cuello de botella, muy por encima de la preparación (2,8 días) y la aprobación del pago (10,3 horas).", 11, False, "#1B2631")],
-        [("• El 93,2 % de las entregas se cumple a tiempo, por debajo de la meta del 95 %. Las caídas se concentran en noviembre 2017 (Black Friday) y febrero-marzo 2018.", 11, False, "#1B2631")],
-        [("• Recomendación: priorizar la mejora del transporte en temporadas de alta demanda.", 11, True, "#1B2631")],
-    ]), titulo=None)
+        ["Cumplimiento BSC", "Indicadores en Verde", "Indicadores en Amarillo", "Indicadores en Rojo"]))
+    p.agregar("scorecard", 16, 204, 836, 508, v_tabla(
+        [("Indicadores", "Código"), ("Indicadores", "Perspectiva"), ("Indicadores", "Indicador")],
+        ["Meta Objetivo", "Valor Actual", "Semáforo"]), titulo="Cuadro de mando: meta, valor actual y semáforo")
+    p.agregar("perspectivas", 864, 204, 400, 248, v_grafico(
+        "clusteredBarChart", ("Indicadores", "Perspectiva"), ["Cumplimiento BSC"],
+        sort=("Column", "Indicadores", "Perspectiva")), titulo="Cumplimiento por perspectiva")
+    p.agregar("mapa", 864, 464, 400, 248, parrafos("Mapa estratégico (causa → efecto)", [
+        "1. Financiera: crecer en pedidos completados y reducir pérdidas.",
+        "▲ 2. Clientes: cumplir la fecha de entrega prometida.",
+        "▲ 3. Procesos internos: aprobar, preparar y transportar más rápido.",
+        "▲ 4. Aprendizaje y crecimiento: datos confiables y más capacidad.",
+        "Hallazgo: el transporte (9,3 días) es el cuello de botella que baja la puntualidad (93,2 % vs meta 95 %).",
+    ]))
     paginas.append(p)
 
-    p = Pagina("tiempos", "2. Tiempos por etapa")
-    encabezado(p, "Tiempos por etapa del proceso",
-               "¿Dónde se va el tiempo? Identificación del cuello de botella del proceso")
+    p = Pagina("financiera", "1. Perspectiva financiera")
+    encabezado(p, "Perspectiva financiera",
+               "Objetivo: crecer en volumen de ventas (pedidos) y reducir los pedidos perdidos")
     p.agregar("kpis", 16, 92, 1248, 100, v_tarjetas(
-        ["Horas Promedio de Aprobación", "Días Promedio de Preparación", "Días Promedio de Transporte", "Días Promedio de Ciclo"]))
-    p.agregar("composicion", 16, 204, 1248, 248, v_grafico(
-        "columnChart", MES, ["Días Promedio de Aprobación", "Días Promedio de Preparación", "Días Promedio de Transporte"],
-        sort=ORDEN_MES, etiquetas=False, leyenda=True),
-        titulo="Composición del tiempo de ciclo por mes (días promedio por etapa)")
-    p.agregar("dia_semana", 16, 464, 400, 248, v_grafico(
-        "clusteredBarChart", ("Calendario", "Día de la semana"), ["Horas Promedio de Aprobación"],
-        sort=("Column", "Calendario", "Día de la semana")),
-        titulo="Horas de aprobación según el día de compra")
-    p.agregar("detalle", 428, 464, 836, 248, v_tabla(
-        [MES], ["Total Pedidos", "Horas Promedio de Aprobación", "Días Promedio de Preparación",
-                "Días Promedio de Transporte", "Días Promedio de Ciclo"]),
-        titulo="Detalle mensual de tiempos")
+        ["Total Pedidos", "Crecimiento Interanual de Pedidos", "% Pedidos Entregados", "% Pedidos Perdidos"]))
+    p.agregar("interanual", 16, 204, 1248, 248, v_grafico(
+        "lineChart", ("Calendario", "Mes"), ["Total Pedidos"], sort=("Column", "Calendario", "Mes"),
+        etiquetas=True, leyenda=True, serie=("Calendario", "Año")),
+        titulo="Pedidos por mes: comparación 2017 vs 2018")
+    p.agregar("fases", 16, 464, 400, 248, v_grafico(
+        "donutChart", ("Estados", "Fase del proceso"), ["Total Pedidos"],
+        sort=("Measure", "Medidas", "Total Pedidos", "Descending"), leyenda=True),
+        titulo="Pedidos por fase: completados, en curso y perdidos")
+    p.agregar("perdidos_mes", 428, 464, 836, 248, v_grafico(
+        "lineChart", MES, ["% Pedidos Perdidos"], sort=ORDEN_MES, etiquetas=False),
+        titulo="% de pedidos perdidos (cancelados o no disponibles) por mes")
     paginas.append(p)
 
-    p = Pagina("sla", "3. Cumplimiento de entregas")
-    encabezado(p, "Cumplimiento de la fecha de entrega (SLA)",
-               "Meta: 95 % de pedidos entregados en la fecha prometida · retraso = defecto (Lean Six Sigma)")
+    p = Pagina("clientes", "2. Perspectiva clientes")
+    encabezado(p, "Perspectiva de clientes",
+               "Objetivo: cumplir la promesa de entrega · meta 95 % de pedidos a tiempo")
     p.agregar("kpis", 16, 92, 924, 100, v_tarjetas(
-        ["% Entregas A Tiempo", "Pedidos Con Retraso", "Días Promedio de Retraso", "Nivel Sigma"]))
+        ["% Entregas A Tiempo", "Días Promedio de Retraso", "% Retrasos Mayores a 7 Días", "Días de Holgura Promedio"]))
     p.agregar("meta", 952, 92, 312, 100, v_tarjetas(["Estado de la Meta", "Brecha vs Meta"]))
     p.agregar("tendencia", 16, 204, 1248, 248, v_grafico(
         "lineChart", MES, ["% Entregas A Tiempo", "Meta % A Tiempo"], sort=ORDEN_MES, etiquetas=False, leyenda=True),
         titulo="% de entregas a tiempo por mes frente a la meta")
     p.agregar("rangos", 16, 464, 620, 248, v_grafico(
-        "clusteredColumnChart", ("Pedidos", "Rango de retraso"), ["Pedidos Entregados"],
-        sort=("Column", "Pedidos", "Rango de retraso")),
+        "clusteredColumnChart", ("Rangos", "Rango de retraso"), ["Pedidos Entregados"],
+        sort=("Column", "Rangos", "Rango de retraso")),
         titulo="Pedidos entregados según días de retraso")
     p.agregar("sla_dia", 648, 464, 616, 248, v_grafico(
         "clusteredBarChart", ("Calendario", "Día de la semana"), ["% Entregas A Tiempo"],
@@ -607,28 +826,45 @@ def construir_paginas():
         titulo="% de entregas a tiempo según el día de compra")
     paginas.append(p)
 
-    p = Pagina("excepciones", "4. Excepciones y calidad")
-    encabezado(p, "Excepciones del proceso y calidad de los datos",
-               "Pedidos que no completan el proceso y registros con fechas inconsistentes detectados en el ETL")
+    p = Pagina("procesos", "3. Perspectiva procesos internos")
+    encabezado(p, "Perspectiva de procesos internos",
+               "Objetivo: reducir el tiempo de ciclo compra → aprobación → transportista → cliente")
     p.agregar("kpis", 16, 92, 1248, 100, v_tarjetas(
-        ["Pedidos Cancelados o No Disponibles", "% Cancelación", "Pedidos en Curso", "Registros con Inconsistencias"]))
+        ["Días Promedio de Ciclo", "Horas Promedio de Aprobación", "Días Promedio de Preparación", "Días Promedio de Transporte"]))
+    p.agregar("composicion", 16, 204, 1248, 248, v_grafico(
+        "columnChart", MES, ["Días Promedio de Aprobación", "Días Promedio de Preparación", "Días Promedio de Transporte"],
+        sort=ORDEN_MES, etiquetas=False, leyenda=True),
+        titulo="Composición del tiempo de ciclo por mes (días promedio por etapa)")
+    p.agregar("embudo", 16, 464, 400, 248, v_grafico(
+        "funnel", ("Etapas", "Etapa"), ["Pedidos que Alcanzan la Etapa"], sort=("Column", "Etapas", "Etapa")),
+        titulo="Embudo: pedidos que alcanzan cada etapa")
+    p.agregar("detalle", 428, 464, 836, 248, v_tabla(
+        [MES], ["Total Pedidos", "Horas Promedio de Aprobación", "Días Promedio de Preparación",
+                "Días Promedio de Transporte", "Días Promedio de Ciclo"]),
+        titulo="Detalle mensual de tiempos")
+    paginas.append(p)
+
+    p = Pagina("aprendizaje", "4. Perspectiva aprendizaje y crecimiento")
+    encabezado(p, "Perspectiva de aprendizaje y crecimiento",
+               "Objetivo: información confiable y mayor capacidad para procesar pedidos")
+    p.agregar("kpis", 16, 92, 1248, 100, v_tarjetas(
+        ["% Registros Consistentes", "Pedidos Promedio por Día", "Mejora A Tiempo vs Año Anterior", "Registros con Inconsistencias"]))
     p.agregar("calidad", 16, 204, 620, 248, v_grafico(
         "clusteredBarChart", ("Pedidos", "Calidad del registro"), ["Registros con Inconsistencias"],
         sort=("Measure", "Medidas", "Registros con Inconsistencias", "Descending")),
-        titulo="Registros con inconsistencias por tipo de regla")
-    p.agregar("cancel_mes", 648, 204, 616, 248, v_grafico(
-        "lineChart", MES, ["% Cancelación"], sort=ORDEN_MES, etiquetas=False),
-        titulo="% de cancelación por mes")
+        titulo="Registros con inconsistencias por regla de calidad")
+    p.agregar("capacidad", 648, 204, 616, 248, v_grafico(
+        "lineChart", MES, ["Pedidos Promedio por Día"], sort=ORDEN_MES, etiquetas=False),
+        titulo="Capacidad: pedidos procesados por día, por mes")
     p.agregar("estados", 16, 464, 620, 248, v_tabla(
-        [("Pedidos", "Estado del pedido")], ["Total Pedidos", "% del Total de Pedidos"]),
-        titulo="Pedidos por estado")
-    p.agregar("reglas", 648, 464, 616, 248, v_texto([
-        [("Reglas de calidad aplicadas en el ETL (Power Query)", 13, True, AZUL)],
-        [("• Se eliminaron duplicados por ID de pedido y se filtraron los meses incompletos (2016 y sep-oct 2018).", 10, False, "#1B2631")],
-        [("• Fechas vacías → null; fechas leídas con cultura en-US; estados traducidos al español.", 10, False, "#1B2631")],
-        [("• Se marca cada pedido cuyas fechas no siguen el orden compra → aprobación → transportista → cliente.", 10, False, "#1B2631")],
-        [("• Las duraciones negativas no se usan en los promedios (quedan en null) para no distorsionar los tiempos.", 10, False, "#1B2631")],
-    ]), titulo=None)
+        [("Estados", "Estado del pedido"), ("Estados", "Fase del proceso")], ["Total Pedidos", "% del Total de Pedidos"]),
+        titulo="Pedidos por estado (dimensión Estados, relación 1 a muchos)")
+    p.agregar("reglas", 648, 464, 616, 248, parrafos("Revisión de datos en el ETL (Power Query)", [
+        "• Cada columna con su tipo: textos (IDs, estado), fecha/hora (5 fechas), enteros y decimales (tiempos).",
+        "• Duplicados por ID eliminados; meses incompletos filtrados (2016 y sep-oct 2018); vacíos → null.",
+        "• Se marca cada pedido cuyas fechas no siguen el orden compra → aprobación → transportista → cliente.",
+        "• Las duraciones negativas no entran en los promedios (quedan en null).",
+    ]))
     paginas.append(p)
     return paginas
 
@@ -646,8 +882,8 @@ def generar_reporte(base):
     temas = rp / "StaticResources" / "SharedResources" / "BaseThemes"
     temas.mkdir(parents=True, exist_ok=True)
     shutil.copy(AQUI / "recursos" / "CY24SU10.json", temas / "CY24SU10.json")
-    escribir(rp / "StaticResources" / "RegisteredResources" / "TemaBPM.json", {
-        "name": "TemaBPM.json",
+    escribir(rp / "StaticResources" / "RegisteredResources" / "TemaBSC.json", {
+        "name": "TemaBSC.json",
         "dataColors": [AZUL, "#2E86C1", "#F39C12", "#27AE60", "#C0392B", "#8E44AD", "#16A085", "#7F8C8D"],
         "background": "#FFFFFF", "foreground": "#1B2631", "tableAccent": AZUL})
     d = rp / "definition"
@@ -656,13 +892,13 @@ def generar_reporte(base):
         "$schema": f"{SCH}/report/1.2.0/schema.json",
         "themeCollection": {
             "baseTheme": {"name": "CY24SU10", "reportVersionAtImport": "5.61", "type": "SharedResources"},
-            "customTheme": {"name": "TemaBPM.json", "reportVersionAtImport": "5.61", "type": "RegisteredResources"}},
+            "customTheme": {"name": "TemaBSC.json", "reportVersionAtImport": "5.61", "type": "RegisteredResources"}},
         "layoutOptimization": "None",
         "resourcePackages": [
             {"name": "SharedResources", "type": "SharedResources",
              "items": [{"name": "CY24SU10", "path": "BaseThemes/CY24SU10.json", "type": "BaseTheme"}]},
             {"name": "RegisteredResources", "type": "RegisteredResources",
-             "items": [{"name": "TemaBPM.json", "path": "TemaBPM.json", "type": "CustomTheme"}]}],
+             "items": [{"name": "TemaBSC.json", "path": "TemaBSC.json", "type": "CustomTheme"}]}],
         "settings": {"useStylableVisualContainerHeader": True, "defaultDrillFilterOtherVisuals": True,
                      "allowChangeFilterTypes": True, "useEnhancedTooltips": True,
                      "useDefaultAggregateDisplayName": True}})
