@@ -27,8 +27,7 @@
                 }
               },
               "queryRef": "Calendario.Mes y año",
-              "nativeQueryRef": "Mes y año",
-              "active": true
+              "nativeQueryRef": "Mes y año"
             },
             {
               "field": {
@@ -118,7 +117,8 @@
             },
             "direction": "Ascending"
           }
-        ]
+        ],
+        "isDefaultSort": true
       }
     },
     "objects": {

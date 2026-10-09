@@ -27,8 +27,7 @@
                 }
               },
               "queryRef": "Estados.Estado del pedido",
-              "nativeQueryRef": "Estado del pedido",
-              "active": true
+              "nativeQueryRef": "Estado del pedido"
             },
             {
               "field": {
@@ -42,8 +41,7 @@
                 }
               },
               "queryRef": "Estados.Fase del proceso",
-              "nativeQueryRef": "Fase del proceso",
-              "active": true
+              "nativeQueryRef": "Fase del proceso"
             },
             {
               "field": {
@@ -91,7 +89,8 @@
             },
             "direction": "Ascending"
           }
-        ]
+        ],
+        "isDefaultSort": true
       }
     },
     "objects": {

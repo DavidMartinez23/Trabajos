@@ -642,9 +642,12 @@ def campo(tipo, entidad, prop):
     return {tipo: {"Expression": {"SourceRef": {"Entity": entidad}}, "Property": prop}}
 
 
-def col(entidad, prop):
-    return {"field": campo("Column", entidad, prop), "queryRef": f"{entidad}.{prop}",
-            "nativeQueryRef": prop, "active": True}
+def col(entidad, prop, activo=True):
+    """Proyección de columna; las tablas no usan "active" (igual que las exportaciones de Power BI Desktop)."""
+    c = {"field": campo("Column", entidad, prop), "queryRef": f"{entidad}.{prop}", "nativeQueryRef": prop}
+    if activo:
+        c["active"] = True
+    return c
 
 
 def med(prop, entidad="Medidas"):
@@ -745,8 +748,8 @@ def v_grafico(tipo, categoria, medidas, sort=None, etiquetas=True, leyenda=None,
 def v_tabla(columnas, medidas):
     return {
         "visualType": "tableEx",
-        "query": {"queryState": {"Values": {"projections": [col(*c) for c in columnas] + [med(m) for m in medidas]}},
-                  "sortDefinition": orden("Column", *columnas[0])},
+        "query": {"queryState": {"Values": {"projections": [col(*c, activo=False) for c in columnas] + [med(m) for m in medidas]}},
+                  "sortDefinition": {**orden("Column", *columnas[0]), "isDefaultSort": True}},
         "objects": {"columnHeaders": [{"properties": {"backColor": color(AZUL), "fontColor": color("#FFFFFF")}}]},
     }
 
